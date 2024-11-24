@@ -86,8 +86,9 @@ int main() {
   // to resources are layed out.
   // 
   vku::PipelineLayoutMaker plm{};
-  plm.pushConstantRange(vk::ShaderStageFlagBits::eAll, 0, sizeof(PushConstant));
-  auto pipelineLayout = plm.createUnique(device);
+  auto pipelineLayout = plm
+    .pushConstantRange(vk::ShaderStageFlagBits::eAll, 0, sizeof(PushConstant))
+    .createUnique(device);
 
   auto buildPipeline = [&]() {
     // Make a pipeline to use the vertex format and shaders.
@@ -105,7 +106,7 @@ int main() {
   int frame = 0;
 
   // Loop waiting for the window to close.
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
     P.back().rotation = glm::rotate(P.back().rotation, glm::radians(1.0f), glm::vec3(0, 0, 1));
@@ -124,8 +125,7 @@ int main() {
           wh = window.height();
           pipeline = buildPipeline();
         }
-        vk::CommandBufferBeginInfo cbbi{};
-        cb.begin(cbbi);
+        cb.begin(vk::CommandBufferBeginInfo{});
         cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
         cb.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
         cb.bindVertexBuffers(0, buffer.buffer(), vk::DeviceSize(0));

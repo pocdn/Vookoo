@@ -319,10 +319,12 @@ public:
 
 	  createFrameBuffers();
 
-	  vk::SemaphoreCreateInfo sci;
-    imageAcquireSemaphore_ = device.createSemaphoreUnique(sci);
-    commandCompleteSemaphore_ = device.createSemaphoreUnique(sci);
-    dynamicSemaphore_ = device.createSemaphoreUnique(sci);
+    for (int i = 0; i != numImageIndices(); ++i) {
+      vk::SemaphoreCreateInfo sci;
+      imageAcquireSemaphore_.emplace_back(device.createSemaphoreUnique(sci));
+      commandCompleteSemaphore_.emplace_back(device.createSemaphoreUnique(sci));
+      dynamicSemaphore_.emplace_back(device.createSemaphoreUnique(sci));
+    }
 
     typedef vk::CommandPoolCreateFlagBits ccbits;
 
@@ -420,32 +422,38 @@ public:
   /// Queue the static command buffer for the next image in the swap chain. Optionally call a function to create a dynamic command buffer
   /// for uploading textures, changing uniforms etc.
   void draw(const vk::Device &device, const vk::Queue &graphicsQueue, const std::function<void (vk::CommandBuffer cb, int imageIndex, vk::RenderPassBeginInfo &rpbi)> &dynamic = defaultRenderFunc) {
+    /* uncomment to use time ***********************************
     static auto start = std::chrono::high_resolution_clock::now();
     auto time = std::chrono::high_resolution_clock::now();
     auto delta = time - start;
     start = time;
-    // uncomment to get frame time.
     //std::cout << std::chrono::duration_cast<std::chrono::microseconds>(delta).count() << "us frame time\n";
+    *************************************************************/
 
     auto umax = std::numeric_limits<uint64_t>::max();
-    uint32_t imageIndex = 0;
-    auto acquired = device.acquireNextImageKHR(*swapchain_, umax, *imageAcquireSemaphore_, vk::Fence(), &imageIndex);
+    static uint32_t imageIndex = 0;
+    
+    vk::Fence &rpcbFence = dynamicCommandBufferFences_[imageIndex];
+    {vk::Result result = device.waitForFences(rpcbFence, 1, umax);} // TODO use result
+    
+    vk::Fence &cbFence = commandBufferFences_[imageIndex];
+    {vk::Result result = device.waitForFences(cbFence, 1, umax);} // TODO use result
+    
+    auto acquired = device.acquireNextImageKHR(*swapchain_, umax, *imageAcquireSemaphore_[imageIndex], vk::Fence(), &imageIndex);
     if (acquired != vk::Result::eSuccess) {
       recreate();
       return;
     }
+
+    device.resetFences(rpcbFence);
+    device.resetFences(cbFence);
+
     vk::PipelineStageFlags waitStages = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-    vk::Semaphore ccSema = *commandCompleteSemaphore_;
-    vk::Semaphore iaSema = *imageAcquireSemaphore_;
-    vk::Semaphore psSema = *dynamicSemaphore_;
+    vk::Semaphore ccSema = *commandCompleteSemaphore_[imageIndex];
+    vk::Semaphore iaSema = *imageAcquireSemaphore_[imageIndex];
+    vk::Semaphore psSema = *dynamicSemaphore_[imageIndex];
     vk::CommandBuffer cb = *staticDrawBuffers_[imageIndex];
     vk::CommandBuffer pscb = *dynamicDrawBuffers_[imageIndex];
-
-
-    vk::Fence rpcbFence = dynamicCommandBufferFences_[imageIndex];
-    {vk::Result result = device.waitForFences(rpcbFence, 1, umax);} // TODO use result
-    device.resetFences(rpcbFence);
-
 
     vk::ClearDepthStencilValue clearDepthValue{ 1.0f, 0 };
     std::array<vk::ClearValue, 2> clearColours{vk::ClearValue{clearColorValue()}, clearDepthValue};
@@ -465,13 +473,8 @@ public:
     submit.pCommandBuffers = &pscb;
     submit.signalSemaphoreCount = 1;
     submit.pSignalSemaphores = &psSema;
+
     {vk::Result result = graphicsQueue.submit(1, &submit, rpcbFence);} // TODO use result
-
-
-    vk::Fence cbFence = commandBufferFences_[imageIndex];
-    {vk::Result result = device.waitForFences(cbFence, 1, umax);} // TODO use result
-    device.resetFences(cbFence);
-
 
     submit.waitSemaphoreCount = 1;
     submit.pWaitSemaphores = &psSema;
@@ -480,6 +483,7 @@ public:
     submit.pCommandBuffers = &cb;
     submit.signalSemaphoreCount = 1;
     submit.pSignalSemaphores = &ccSema;
+
     {vk::Result result = graphicsQueue.submit(1, &submit, cbFence);} // TODO use result
 
     vk::PresentInfoKHR presentInfo;
@@ -492,8 +496,12 @@ public:
     try {
 	    {vk::Result result = presentQueue().presentKHR(presentInfo);} // TODO use result
     } catch (const vk::OutOfDateKHRError) {
+      // likely here on window resize event
     	recreate();
     }
+
+    // prepare for next frame to use next index 
+    ++imageIndex %= numImageIndices();
   }
 
   /// Return the queue family index used to present the surface to the display.
@@ -558,10 +566,13 @@ public:
   const std::vector<vk::Fence> &dynamicCommandBufferFences() const { return dynamicCommandBufferFences_; }
 
   /// Return the semaphore signalled when an image is acquired.
-  vk::Semaphore imageAcquireSemaphore() const { return *imageAcquireSemaphore_; }
+  const std::vector<vk::UniqueSemaphore> &imageAcquireSemaphore() const { return imageAcquireSemaphore_; }
 
   /// Return the semaphore signalled when the command buffers are finished.
-  vk::Semaphore commandCompleteSemaphore() const { return *commandCompleteSemaphore_; }
+  const std::vector<vk::UniqueSemaphore> &commandCompleteSemaphore() const { return commandCompleteSemaphore_; }
+
+  /// Return the semaphore signalled when a presentation is finished.
+  const std::vector<vk::UniqueSemaphore> &dynamicSemaphore() const { return dynamicSemaphore_; }
 
   /// Return a defult command Pool to use to create new command buffers.
   vk::CommandPool commandPool() const { return *commandPool_; }
@@ -703,9 +714,9 @@ private:
   vk::UniqueSurfaceKHR surface_;
   vk::UniqueSwapchainKHR swapchain_;
   vk::UniqueRenderPass renderPass_;
-  vk::UniqueSemaphore imageAcquireSemaphore_;
-  vk::UniqueSemaphore commandCompleteSemaphore_;
-  vk::UniqueSemaphore dynamicSemaphore_;
+  std::vector<vk::UniqueSemaphore> imageAcquireSemaphore_;
+  std::vector<vk::UniqueSemaphore> commandCompleteSemaphore_;
+  std::vector<vk::UniqueSemaphore> dynamicSemaphore_;
   vk::UniqueCommandPool commandPool_;
 
   std::vector<vk::ImageView> imageViews_;

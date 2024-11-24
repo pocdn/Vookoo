@@ -96,8 +96,7 @@ int main() {
         wh = window.height();
         pipeline = buildPipeline();
       }
-      vk::CommandBufferBeginInfo cbbi{};
-      cb.begin(cbbi);
+      cb.begin(vk::CommandBufferBeginInfo{});
       cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
       cb.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
       cb.bindVertexBuffers(0, buffer.buffer(), vk::DeviceSize(0));
@@ -108,7 +107,7 @@ int main() {
   );
 
   // Loop waiting for the window to close.
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
     // draw triangles.
