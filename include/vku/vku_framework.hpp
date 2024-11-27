@@ -439,21 +439,20 @@ public:
     vk::Fence &cbFence = commandBufferFences_[imageIndex];
     {vk::Result result = device.waitForFences(cbFence, 1, umax);} // TODO use result
     
-    auto acquired = device.acquireNextImageKHR(*swapchain_, umax, *imageAcquireSemaphore_[imageIndex], vk::Fence(), &imageIndex);
-    if (acquired != vk::Result::eSuccess) {
-      recreate();
+    vk::Semaphore iaSema = *imageAcquireSemaphore_[imageIndex];
+    auto acquired = device.acquireNextImageKHR(*swapchain_, umax, iaSema, VK_NULL_HANDLE, &imageIndex);
+    if (acquired == vk::Result::eErrorOutOfDateKHR) {
+      recreateSwapChain();
       return;
+    } else if (acquired != vk::Result::eSuccess && acquired != vk::Result::eSuboptimalKHR) {
+      throw std::runtime_error("failed to present swap chain image!");
     }
 
     device.resetFences(rpcbFence);
     device.resetFences(cbFence);
 
-    vk::PipelineStageFlags waitStages = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-    vk::Semaphore ccSema = *commandCompleteSemaphore_[imageIndex];
-    vk::Semaphore iaSema = *imageAcquireSemaphore_[imageIndex];
-    vk::Semaphore psSema = *dynamicSemaphore_[imageIndex];
-    vk::CommandBuffer cb = *staticDrawBuffers_[imageIndex];
     vk::CommandBuffer pscb = *dynamicDrawBuffers_[imageIndex];
+    vk::Semaphore psSema = *dynamicSemaphore_[imageIndex];
 
     vk::ClearDepthStencilValue clearDepthValue{ 1.0f, 0 };
     std::array<vk::ClearValue, 2> clearColours{vk::ClearValue{clearColorValue()}, clearDepthValue};
@@ -465,6 +464,8 @@ public:
     rpbi.pClearValues = clearColours.data();
     dynamic(pscb, imageIndex, rpbi);
 
+    vk::PipelineStageFlags waitStages = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+
     vk::SubmitInfo submit;
     submit.waitSemaphoreCount = 1;
     submit.pWaitSemaphores = &iaSema;
@@ -475,6 +476,9 @@ public:
     submit.pSignalSemaphores = &psSema;
 
     {vk::Result result = graphicsQueue.submit(1, &submit, rpcbFence);} // TODO use result
+
+    vk::CommandBuffer cb = *staticDrawBuffers_[imageIndex];
+    vk::Semaphore ccSema = *commandCompleteSemaphore_[imageIndex];
 
     submit.waitSemaphoreCount = 1;
     submit.pWaitSemaphores = &psSema;
@@ -493,11 +497,15 @@ public:
     presentInfo.pImageIndices = &imageIndex;
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores = &ccSema;
-    try {
-	    {vk::Result result = presentQueue().presentKHR(presentInfo);} // TODO use result
-    } catch (const vk::OutOfDateKHRError) {
-      // likely here on window resize event
-    	recreate();
+
+    vk::Result resultPresent;
+    try { resultPresent = presentQueue().presentKHR(presentInfo); } 
+    catch (vk::OutOfDateKHRError err) { resultPresent = vk::Result::eErrorOutOfDateKHR; }
+    catch (...) { throw std::runtime_error("failed to present swap chain image!"); }
+    if (resultPresent == vk::Result::eErrorOutOfDateKHR || resultPresent == vk::Result::eSuboptimalKHR || framebufferResized) {
+      framebufferResized = false;
+      recreateSwapChain();
+      return;
     }
 
     // prepare for next frame to use next index 
@@ -613,7 +621,7 @@ public:
     swapinfo.queueFamilyIndexCount = !sameQueues ? 2 : 0;
     swapinfo.pQueueFamilyIndices = queueFamilyIndices.data();
     swapinfo.preTransform = surfaceCaps.currentTransform;
-    ;
+ 
     swapinfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
     swapinfo.presentMode = presentMode;
     swapinfo.clipped = 1;
@@ -689,8 +697,41 @@ public:
     renderPass_ = rpm.createUnique(device_);
   }
 
-  void recreate() {
-    {vk::Result result = device_.waitForFences(commandBufferFences_, VK_TRUE, std::numeric_limits<uint64_t>::max());} // TODO use result
+  void setFramebufferResized() { framebufferResized = true; }
+
+  void cleanupSwapChain() {
+//      for (auto framebuffer : swapChainFramebuffers) {
+//          device->destroyFramebuffer(framebuffer);
+//      }
+//for (auto framebuffer : framebuffers_) {
+//  device_.destroyFramebuffer(framebuffer);
+//}
+//
+//      device->freeCommandBuffers(commandPool, commandBuffers);
+//device_.freeCommandBuffers(commandPool_,staticDrawBuffers_);
+//device_.freeCommandBuffers(commandPool_,dynamicDrawBuffers_);
+//
+//      device->destroyPipeline(graphicsPipeline);
+//      device->destroyPipelineLayout(pipelineLayout);
+//      device->destroyRenderPass(renderPass);
+//
+//      for (auto imageView : swapChainImageViews) {
+//          device->destroyImageView(imageView);
+//      }
+//for (auto &iv : imageViews_) {
+//  device_.destroyImageView(iv);
+//}
+
+//      device->destroySwapchainKHR(swapChain);
+//device_.destroySwapchainKHR(swapchain_);
+  }
+
+  void recreateSwapChain() {
+    //{vk::Result result = device_.waitForFences(commandBufferFences_, VK_TRUE, std::numeric_limits<uint64_t>::max());} // TODO use result
+
+    device_.waitIdle();
+
+    cleanupSwapChain(); // TODO implement
 
     createSwapchain();
 
@@ -735,6 +776,7 @@ private:
   uint32_t presentQueueFamily_ = 0;
   uint32_t width_;
   uint32_t height_;
+  bool framebufferResized = false;
   std::array<float, 4> clearColorValue_{0.75f, 0.75f, 0.75f, 1};
   vk::Format swapchainImageFormat_ = vk::Format::eB8G8R8A8Unorm;
   vk::ColorSpaceKHR swapchainColorSpace_ = vk::ColorSpaceKHR::eSrgbNonlinear;

@@ -121,6 +121,7 @@ int main() {
         static auto ww = window.width();
         static auto wh = window.height();
         if (ww != window.width() || wh != window.height()) {
+          window.setFramebufferResized();
           ww = window.width();
           wh = window.height();
           pipeline = buildPipeline();
