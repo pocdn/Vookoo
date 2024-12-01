@@ -109,6 +109,10 @@ int main() {
   while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
+    int width, height;
+    glfwGetWindowSize(glfwwindow, &width, &height);
+    if (width==0 || height==0) continue;
+
     P.back().rotation = glm::rotate(P.back().rotation, glm::radians(1.0f), glm::vec3(0, 0, 1));
     P.back().colour.r = (std::sin(frame * 0.01f) + 1.0f) / 2.0f;
     P.back().colour.g = (std::cos(frame * 0.01f) + 1.0f) / 2.0f;
@@ -121,7 +125,6 @@ int main() {
         static auto ww = window.width();
         static auto wh = window.height();
         if (ww != window.width() || wh != window.height()) {
-          window.setFramebufferResized();
           ww = window.width();
           wh = window.height();
           pipeline = buildPipeline();
@@ -147,9 +150,6 @@ int main() {
         cb.end();
       }
     );
-
-    // Very crude method to prevent your GPU from overheating.
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
 
     ++frame;
   }

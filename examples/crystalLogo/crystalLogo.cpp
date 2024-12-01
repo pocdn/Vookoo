@@ -444,7 +444,7 @@ int main() {
      .dependencySrcStageMask(vk::PipelineStageFlagBits::eFragmentShader)
      .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
      .dependencySrcAccessMask(vk::AccessFlagBits::eShaderRead)
-     .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+     .dependencyDstAccessMask(vk::AccessFlagBits::eMemoryWrite)
      .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
       // dependency: If dstSubpass is equal to VK_SUBPASS_EXTERNAL, 
       // the second synchronization scope includes commands that occur later
@@ -453,7 +453,7 @@ int main() {
      .dependencyBegin(0, VK_SUBPASS_EXTERNAL)
      .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
      .dependencyDstStageMask(vk::PipelineStageFlagBits::eFragmentShader)
-     .dependencySrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+     .dependencySrcAccessMask(vk::AccessFlagBits::eMemoryWrite)
      .dependencyDstAccessMask(vk::AccessFlagBits::eShaderRead)
      .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
      // Use the maker object to construct the renderpass
@@ -908,7 +908,7 @@ int main() {
        .dependencySrcStageMask(vk::PipelineStageFlagBits::eFragmentShader)
        .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
        .dependencySrcAccessMask(vk::AccessFlagBits::eShaderRead)
-       .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+       .dependencyDstAccessMask(vk::AccessFlagBits::eMemoryWrite)
        .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
         // dependency: If dstSubpass is equal to VK_SUBPASS_EXTERNAL, 
         // the second synchronization scope includes commands that occur later
@@ -917,7 +917,7 @@ int main() {
        .dependencyBegin(0, VK_SUBPASS_EXTERNAL)
        .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
        .dependencyDstStageMask(vk::PipelineStageFlagBits::eFragmentShader)
-       .dependencySrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+       .dependencySrcAccessMask(vk::AccessFlagBits::eMemoryWrite)
        .dependencyDstAccessMask(vk::AccessFlagBits::eShaderRead)
        .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
        // Use the maker object to construct the renderpass
@@ -1115,8 +1115,12 @@ int main() {
   };
  
   int iFrame = 0;
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
+
+    int width, height;
+    glfwGetWindowSize(glfwwindow, &width, &height);
+    if (width==0 || height==0) continue;
 
     Uniform_frag uniform_frag {
       .resolution = glm::vec2{window.width(), window.height()},
@@ -1239,8 +1243,6 @@ int main() {
     uniform_vert.world = glm::rotate( 0.5f*1/60.0f, glm::normalize(glm::vec3(6,2,0)) ) * uniform_vert.world;
     uniform_vert.world = mouse_rotation * uniform_vert.world;
 
-    // Very crude method to prevent your GPU from overheating.
-    //std::this_thread::sleep_for(std::chrono::milliseconds(16));
   }
 
   // Wait until all drawing is done and then kill the window.

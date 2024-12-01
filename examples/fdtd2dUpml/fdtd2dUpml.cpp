@@ -384,7 +384,7 @@ int main() {
      .dependencySrcStageMask(vk::PipelineStageFlagBits::eFragmentShader)
      //VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
      //VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-     .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+     .dependencyDstAccessMask(vk::AccessFlagBits::eMemoryWrite)
      .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
      .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
       // dependency: If dstSubpass is equal to VK_SUBPASS_EXTERNAL, 
@@ -394,7 +394,7 @@ int main() {
      .dependencyBegin(0, VK_SUBPASS_EXTERNAL)
      //VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
      //VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-     .dependencySrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+     .dependencySrcAccessMask(vk::AccessFlagBits::eMemoryWrite)
      .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
      //VK_ACCESS_INPUT_ATTACHMENT_READ_BIT
      //VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
@@ -556,8 +556,12 @@ int main() {
   };
 
   int iFrame = 0;
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
+
+    int width, height;
+    glfwGetWindowSize(glfwwindow, &width, &height);
+    if (width==0 || height==0) continue;
 
     window.draw(device, fw.graphicsQueue(),
       [&](vk::CommandBuffer cb, int imageIndex, vk::RenderPassBeginInfo &rpbi) {
@@ -611,7 +615,6 @@ int main() {
         
     );
 
-    //std::this_thread::sleep_for(std::chrono::milliseconds(16)); // unnecessary with swapchain present mode being "Fifo" which is V-SYNC limited.
     iFrame++;
   }
 

@@ -69,8 +69,7 @@ public:
 
   FrameworkOptions options;
 
-  Framework() {
-  }
+  Framework() = delete; // Disable default constructor
 
   // Construct a framework containing the instance, a device and one or more queues.
   Framework(const std::string &name, const FrameworkOptions &options_ = FrameworkOptions{}) : options(options_) {
@@ -236,8 +235,7 @@ private:
 /// This class wraps a window, a surface and a swap chain for that surface.
 class Window {
 public:
-  Window() {
-  }
+  Window() = delete; // Disable default constructor
 
 #ifndef VKU_NO_GLFW
   /// Construct a window, surface and swapchain using a GLFW window.
@@ -269,9 +267,7 @@ public:
   }
 
   void init(const vk::Instance &instance, const vk::Device &device, const vk::PhysicalDevice &physicalDevice, uint32_t graphicsQueueFamilyIndex, vk::SurfaceKHR surface, vk::Format desiredSwapChainFormat) {
-    //surface_ = vk::UniqueSurfaceKHR(surface);
     surface_ = vk::UniqueSurfaceKHR(surface, vk::ObjectDestroy<vk::Instance, vk::DispatchLoaderStatic>(instance));
-    // surface_ = surface;
     graphicsQueueFamilyIndex_ = graphicsQueueFamilyIndex;
     physicalDevice_ = physicalDevice;
     instance_ = instance;
@@ -502,13 +498,11 @@ public:
     try { resultPresent = presentQueue().presentKHR(presentInfo); } 
     catch (vk::OutOfDateKHRError err) { resultPresent = vk::Result::eErrorOutOfDateKHR; }
     catch (...) { throw std::runtime_error("failed to present swap chain image!"); }
-    if (resultPresent == vk::Result::eErrorOutOfDateKHR || resultPresent == vk::Result::eSuboptimalKHR || framebufferResized) {
-      framebufferResized = false;
+    if (resultPresent == vk::Result::eErrorOutOfDateKHR || resultPresent == vk::Result::eSuboptimalKHR) {
       recreateSwapChain();
       return;
     }
 
-    // prepare for next frame to use next index 
     ++imageIndex %= numImageIndices();
   }
 
@@ -601,8 +595,10 @@ public:
     }
 
     auto surfaceCaps = physicalDevice_.getSurfaceCapabilitiesKHR(surface_.get());
-    width_ = surfaceCaps.currentExtent.width;
-    height_ = surfaceCaps.currentExtent.height;
+    if (!(width_ == surfaceCaps.currentExtent.width && height_ == surfaceCaps.currentExtent.height)) {
+      width_ = surfaceCaps.currentExtent.width;
+      height_ = surfaceCaps.currentExtent.height;
+    }
     vk::SwapchainCreateInfoKHR swapinfo{};
     std::array<uint32_t, 2> queueFamilyIndices = {graphicsQueueFamilyIndex_,
                                                   presentQueueFamily_};
@@ -697,50 +693,13 @@ public:
     renderPass_ = rpm.createUnique(device_);
   }
 
-  void setFramebufferResized() { framebufferResized = true; }
-
-  void cleanupSwapChain() {
-//      for (auto framebuffer : swapChainFramebuffers) {
-//          device->destroyFramebuffer(framebuffer);
-//      }
-//for (auto framebuffer : framebuffers_) {
-//  device_.destroyFramebuffer(framebuffer);
-//}
-//
-//      device->freeCommandBuffers(commandPool, commandBuffers);
-//device_.freeCommandBuffers(commandPool_,staticDrawBuffers_);
-//device_.freeCommandBuffers(commandPool_,dynamicDrawBuffers_);
-//
-//      device->destroyPipeline(graphicsPipeline);
-//      device->destroyPipelineLayout(pipelineLayout);
-//      device->destroyRenderPass(renderPass);
-//
-//      for (auto imageView : swapChainImageViews) {
-//          device->destroyImageView(imageView);
-//      }
-//for (auto &iv : imageViews_) {
-//  device_.destroyImageView(iv);
-//}
-
-//      device->destroySwapchainKHR(swapChain);
-//device_.destroySwapchainKHR(swapchain_);
-  }
-
   void recreateSwapChain() {
-    //{vk::Result result = device_.waitForFences(commandBufferFences_, VK_TRUE, std::numeric_limits<uint64_t>::max());} // TODO use result
-
     device_.waitIdle();
 
-    cleanupSwapChain(); // TODO implement
-
     createSwapchain();
-
     createImages();
-
     createDepthStencil();
-
     createFrameBuffers();
-
     buildStaticCBs();
   }
 
@@ -776,7 +735,6 @@ private:
   uint32_t presentQueueFamily_ = 0;
   uint32_t width_;
   uint32_t height_;
-  bool framebufferResized = false;
   std::array<float, 4> clearColorValue_{0.75f, 0.75f, 0.75f, 1};
   vk::Format swapchainImageFormat_ = vk::Format::eB8G8R8A8Unorm;
   vk::ColorSpaceKHR swapchainColorSpace_ = vk::ColorSpaceKHR::eSrgbNonlinear;

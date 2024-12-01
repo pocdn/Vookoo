@@ -110,11 +110,12 @@ int main() {
   while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
+    int width, height;
+    glfwGetWindowSize(glfwwindow, &width, &height);
+    if (width==0 || height==0) continue;
+
     // draw triangles.
     window.draw(device, fw.graphicsQueue());
-
-    // Very crude method to prevent your GPU from overheating.
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
   }
 
   // Wait until all drawing is done and then kill the window.

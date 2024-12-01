@@ -143,8 +143,12 @@ int main() {
     int frame = 0;
   
     // Loop waiting for the window to close.
-    while (!glfwWindowShouldClose(glfwwindow)) {
+    while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
       glfwPollEvents();
+
+      int width, height;
+      glfwGetWindowSize(glfwwindow, &width, &height);
+      if (width==0 || height==0) continue;
   
       U.back().rotation = glm::rotate(U.back().rotation, glm::radians(1.0f), glm::vec3(0, 0, 1));
       U.back().colour.r = (std::sin(frame * 0.01f) + 1.0f) / 2.0f;
@@ -164,8 +168,7 @@ int main() {
             pipeline = buildPipeline();
           }
 
-          vk::CommandBufferBeginInfo cbbi{};
-          cb.begin(cbbi);
+          cb.begin(vk::CommandBufferBeginInfo{});
 
           // Instead of pushConstants() we use updateBuffer(). This has a max of 64k.
           // Like pushConstants(), this takes a copy of the uniform buffer
@@ -207,9 +210,6 @@ int main() {
         }
       );
 
-      // Very crude method to prevent your GPU from overheating.
-      //std::this_thread::sleep_for(std::chrono::milliseconds(16));
-  
       ++frame;
     }
 
