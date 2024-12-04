@@ -232,14 +232,23 @@ private:
   bool ok_ = false;
 };
 
+struct WindowOptions
+{
+  vk::Format desiredSwapChainImageFormat = vk::Format::eB8G8R8A8Unorm;
+  vk::PresentModeKHR desiredPresentMode = vk::PresentModeKHR::eFifo;
+};
+
 /// This class wraps a window, a surface and a swap chain for that surface.
 class Window {
 public:
+
+  WindowOptions options;
+
   Window() = delete; // Disable default constructor
 
 #ifndef VKU_NO_GLFW
   /// Construct a window, surface and swapchain using a GLFW window.
-  Window(const vk::Instance &instance, const vk::Device &device, const vk::PhysicalDevice &physicalDevice, uint32_t graphicsQueueFamilyIndex, GLFWwindow *window, vk::Format desiredSwapChainFormat = vk::Format::eB8G8R8A8Unorm) {
+  Window(const vk::Instance &instance, const vk::Device &device, const vk::PhysicalDevice &physicalDevice, uint32_t graphicsQueueFamilyIndex, GLFWwindow *window, const WindowOptions &options_ = WindowOptions{}) : options(options_) {
 #ifdef VK_USE_PLATFORM_WIN32_KHR
     auto module = GetModuleHandle(nullptr);
     auto handle = glfwGetWin32Window(window);
@@ -258,12 +267,12 @@ public:
 	                        nullptr,
 	                        reinterpret_cast<VkSurfaceKHR *>(&surface));
 #endif
-    init(instance, device, physicalDevice, graphicsQueueFamilyIndex, surface, desiredSwapChainFormat);
+    init(instance, device, physicalDevice, graphicsQueueFamilyIndex, surface, options.desiredSwapChainImageFormat);
   }
 #endif
 
-  Window(const vk::Instance &instance, const vk::Device &device, const vk::PhysicalDevice &physicalDevice, uint32_t graphicsQueueFamilyIndex, vk::SurfaceKHR surface, vk::Format desiredSwapChainFormat = vk::Format::eB8G8R8A8Unorm) {
-    init(instance, device, physicalDevice, graphicsQueueFamilyIndex, surface, desiredSwapChainFormat);
+  Window(const vk::Instance &instance, const vk::Device &device, const vk::PhysicalDevice &physicalDevice, uint32_t graphicsQueueFamilyIndex, vk::SurfaceKHR surface, const WindowOptions &options_ = WindowOptions{}) : options(options_) {
+    init(instance, device, physicalDevice, graphicsQueueFamilyIndex, surface, options.desiredSwapChainImageFormat);
   }
 
   void init(const vk::Instance &instance, const vk::Device &device, const vk::PhysicalDevice &physicalDevice, uint32_t graphicsQueueFamilyIndex, vk::SurfaceKHR surface, vk::Format desiredSwapChainFormat) {
@@ -586,16 +595,15 @@ public:
   void createSwapchain() {
     auto pms = physicalDevice_.getSurfacePresentModesKHR(surface_.get());
     vk::PresentModeKHR presentMode = pms[0];
-    if (std::find(pms.begin(), pms.end(), vk::PresentModeKHR::eFifo) !=
-        pms.end()) {
-      presentMode = vk::PresentModeKHR::eFifo;
+    if (std::find(pms.begin(), pms.end(), options.desiredPresentMode) != pms.end()) {
+      presentMode = options.desiredPresentMode;
     } else {
-      std::cout << "No fifo mode available\n";
+      std::cout << "No present mode available\n";
       return;
     }
 
     auto surfaceCaps = physicalDevice_.getSurfaceCapabilitiesKHR(surface_.get());
-    if (!(width_ == surfaceCaps.currentExtent.width && height_ == surfaceCaps.currentExtent.height)) {
+    if (width_ != surfaceCaps.currentExtent.width || height_ != surfaceCaps.currentExtent.height) {
       width_ = surfaceCaps.currentExtent.width;
       height_ = surfaceCaps.currentExtent.height;
     }

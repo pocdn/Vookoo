@@ -66,7 +66,8 @@ int main() {
     device,
     fw.physicalDevice(),
     fw.graphicsQueueFamilyIndex(),
-    glfwwindow
+    glfwwindow,
+    { .desiredPresentMode = vk::PresentModeKHR::eImmediate }
   );
   if (!window.ok()) {
     std::cout << "Window creation failed" << std::endl;

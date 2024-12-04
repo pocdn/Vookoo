@@ -73,7 +73,9 @@ int main() {
     fw.physicalDevice(),
     fw.graphicsQueueFamilyIndex(),
     glfwwindow,
-    vk::Format::eB8G8R8A8Srgb // swapChainImageFormat chosen for High Dynamic Range
+    { 
+      .desiredSwapChainImageFormat = vk::Format::eB8G8R8A8Srgb // chosen for High Dynamic Range
+    }
   );
   if (!window.ok()) {
     std::cout << "Window creation failed" << std::endl;
