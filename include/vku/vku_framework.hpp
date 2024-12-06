@@ -100,9 +100,10 @@ public:
     // Also: All commands that are allowed on a queue that supports transfer operations are
     // also allowed on a queue that supports either graphics or compute operations...
     // As a result we can expect a queue family with at least all three and maybe all four modes.
+    std::cout << "Queue Family Properties" << std::endl;
     for (uint32_t qi = 0; qi != qprops.size(); ++qi) {
       auto &qprop = qprops[qi];
-      std::cout << vk::to_string(qprop.queueFlags) << "\n";
+      std::cout << "  ID" << qi << " " << vk::to_string(qprop.queueFlags) << "\n";
       if ((qprop.queueFlags & search) == search) {
         graphicsQueueFamilyIndex_ = qi;
         if (options.useCompute) { computeQueueFamilyIndex_ = qi; }
@@ -137,10 +138,10 @@ public:
     vk::PipelineCacheCreateInfo pipelineCacheInfo{};
     pipelineCache_ = device_->createPipelineCacheUnique(pipelineCacheInfo);
 
-    std::vector<vk::DescriptorPoolSize> poolSizes;
-    poolSizes.emplace_back(vk::DescriptorType::eUniformBuffer, 128);
-    poolSizes.emplace_back(vk::DescriptorType::eCombinedImageSampler, 128);
-    poolSizes.emplace_back(vk::DescriptorType::eStorageBuffer, 128);
+    std::vector<vk::DescriptorPoolSize> poolSizes = {
+      {vk::DescriptorType::eUniformBuffer, 128},
+      {vk::DescriptorType::eCombinedImageSampler, 128},
+      {vk::DescriptorType::eStorageBuffer, 128} };
 
     // Create an arbitrary number of descriptors in a pool.
     // Allow the descriptors to be freed, possibly not optimal behaviour.
@@ -379,13 +380,13 @@ public:
     for (auto &fmt : fmts) {
       auto fmtstr = vk::to_string(fmt.format);
       auto cstr = vk::to_string(fmt.colorSpace);
-      os << "format=" << fmtstr << " colorSpace=" << cstr << "\n";
+      os << "  format=" << fmtstr << " colorSpace=" << cstr << "\n";
     }
 
     os << "Present Modes\n";
     auto presentModes = pd.getSurfacePresentModesKHR(surface_.get());
     for (auto pm : presentModes) {
-      std::cout << vk::to_string(pm) << "\n";
+      std::cout << "  " << vk::to_string(pm) << "\n";
     }
   }
 
