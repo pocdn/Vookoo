@@ -841,8 +841,7 @@ private:
 
 struct SpecConst {
   uint32_t    constantID;
-  std::aligned_union<4,VkBool32, uint32_t, int32_t, float, double>::type
-      data;
+  alignas(8) std::byte data[8];
   uint32_t alignment;
   uint32_t size;
 
@@ -1232,6 +1231,19 @@ public:
     return *this;
   }
 
+  /// Add a shader module with specialized constants to the pipeline.
+  ComputePipelineMaker& shader(vk::ShaderStageFlagBits stage, vku::ShaderModule &shader,
+                 vku::PipelineMaker::SpecData specConstants,
+                 const char *entryPoint = "main") {
+    auto data = std::unique_ptr< vku::PipelineMaker::SpecData>{new vku::PipelineMaker::SpecData{std::move(specConstants)}};
+    stage_.module = shader.module();
+    stage_.pName = entryPoint;
+    stage_.stage = stage;
+    stage_.pSpecializationInfo = &data->specializationInfo_;
+    moduleSpecialization_ = std::move(data);
+    return *this;
+  }
+
   /// Set the compute shader module.
   ComputePipelineMaker &module(const vk::PipelineShaderStageCreateInfo &value) {
     stage_ = value;
@@ -1251,6 +1263,7 @@ public:
   }
 private:
   vk::PipelineShaderStageCreateInfo stage_;
+  std::unique_ptr<vku::PipelineMaker::SpecData> moduleSpecialization_;
 };
 
 /// A generic buffer that may be used as a vertex buffer, uniform buffer or other kinds of memory resident data.

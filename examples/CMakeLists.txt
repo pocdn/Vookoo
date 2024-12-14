@@ -91,3 +91,4 @@ example(18 helloGeometryShader helloGeometryShader.vert helloGeometryShader.frag
 example(19 helloTesselationShader helloTesselationShader.vert helloTesselationShader.tesc helloTesselationShader.tese helloTesselationShader.geom helloTesselationShader.frag)
 example(20 gumbo gumbo.vert gumbo.tesc gumbo.tese gumbo.geom gumbo.frag)
 example(21 subpass subpass_0_scene.vert subpass_0_scene.frag subpass_1_composition.vert subpass_1_composition.frag subpass_2_fx.vert subpass_2_fx.frag subpass_3_decal.vert subpass_3_decal.frag)
+example(22 computeDisplay computeDisplay.comp computeDisplay.vert computeDisplay.frag)
