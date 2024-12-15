@@ -1843,7 +1843,7 @@ public:
     info.arrayLayers = 1;
     info.samples = vk::SampleCountFlagBits::e1;
     info.tiling = hostImage ? vk::ImageTiling::eLinear : vk::ImageTiling::eOptimal;
-    info.usage = vk::ImageUsageFlagBits::eSampled|vk::ImageUsageFlagBits::eTransferSrc|vk::ImageUsageFlagBits::eTransferDst;
+    info.usage = vk::ImageUsageFlagBits::eSampled|vk::ImageUsageFlagBits::eTransferSrc|vk::ImageUsageFlagBits::eTransferDst|vk::ImageUsageFlagBits::eStorage;
     info.sharingMode = vk::SharingMode::eExclusive;
     info.queueFamilyIndexCount = 0;
     info.pQueueFamilyIndices = nullptr;

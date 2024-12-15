@@ -77,8 +77,8 @@ int main() {
   // Create Samplers
  
   auto sampler = vku::SamplerMaker{}
-    .magFilter( vk::Filter::eLinear )
-    .minFilter( vk::Filter::eLinear )
+    .magFilter( vk::Filter::eNearest )
+    .minFilter( vk::Filter::eNearest )
     .mipmapMode( vk::SamplerMipmapMode::eNearest )
     .addressModeU( vk::SamplerAddressMode::eRepeat )
     .addressModeV( vk::SamplerAddressMode::eRepeat )
@@ -90,7 +90,7 @@ int main() {
   // Note: this won't work for everyone. With some devices you
   // may need to explictly upload and download data.
   const int Nx = 256, Ny = 256;
-  auto mytex = vku::TextureImage2D(device, memprops, Nx, Ny); //,  mipLevels=1, vk::Format format = vk::Format::eR8G8B8A8Unorm, bool hostImage = false)
+  auto mytex = vku::TextureImage2D(device, memprops, Nx, Ny);
 
   ////////////////////////////////////////
   //
@@ -98,27 +98,26 @@ int main() {
   // Up to 256 bytes of immediate data.
   struct PushConstants {
     float time;
-    int Nx, Ny;
+    int Cx, Cy;
     float pad[1];  // Buffers are usually 16 byte aligned.
-  };
-
-  PushConstants pushValues{
-    .time = 0,
-    .Nx = Nx,
-    .Ny = Ny,
   };
 
   ////////////////////////////////////////
   //
   // Build the descriptor sets
   // Shader has access to a single texture.
-  auto dsetLayout = vku::DescriptorSetLayoutMaker{}
-    .image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eCompute|vk::ShaderStageFlagBits::eFragment, 1)
+  auto dsetLayoutCompute = vku::DescriptorSetLayoutMaker{}
+    .image(0U, vk::DescriptorType::eStorageImage, vk::ShaderStageFlagBits::eCompute, 1)
+    .createUnique(device);
+
+  auto dsetLayoutGraphics = vku::DescriptorSetLayoutMaker{}
+    .image(0U, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1)
     .createUnique(device);
 
   // The descriptor set itself.
   auto descriptorSets = vku::DescriptorSetMaker{} 
-    .layout(*dsetLayout)
+    .layout(*dsetLayoutCompute)
+    .layout(*dsetLayoutGraphics)
     .create(device, descriptorPool);
 
   ////////////////////////////////////////
@@ -126,6 +125,9 @@ int main() {
   // Update the descriptor sets for the shader uniforms.
   vku::DescriptorSetUpdater{}
     .beginDescriptorSet(descriptorSets[0])
+    .beginImages(0, 0, vk::DescriptorType::eStorageImage)
+    .image(*sampler, mytex.imageView(), vk::ImageLayout::eGeneral)
+    .beginDescriptorSet(descriptorSets[1])
     .beginImages(0, 0, vk::DescriptorType::eCombinedImageSampler)
     .image(*sampler, mytex.imageView(), vk::ImageLayout::eGeneral)
     .update(device); // this only copies the pointer, not any data.
@@ -133,21 +135,20 @@ int main() {
   ////////////////////////////////////////
   //
   // Pipeline layout.
-  auto pipelineLayoutGraphics = vku::PipelineLayoutMaker{}
-    .descriptorSetLayout(*dsetLayout)
-    //.pushConstantRange(vk::ShaderStageFlagBits::eFragment, 0, sizeof(PushConstants))
+  auto pipelineLayoutCompute = vku::PipelineLayoutMaker{}
+    .descriptorSetLayout(*dsetLayoutCompute)
+    .pushConstantRange(vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConstants))
     .createUnique(device);
 
-  auto pipelineLayoutCompute = vku::PipelineLayoutMaker{}
-    .descriptorSetLayout(*dsetLayout)
-    .pushConstantRange(vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConstants))
+  auto pipelineLayoutGraphics = vku::PipelineLayoutMaker{}
+    .descriptorSetLayout(*dsetLayoutGraphics)
     .createUnique(device);
 
   ////////////////////////////////////////
   //
   // Specialization constants.
   // Define localwork group dimensions to use in compute shader.
-  int local_size_x = 16, local_size_y = 16;
+  int local_size_x = 32, local_size_y = 32;
   std::vector<vku::SpecConst> specializations{
     {0, local_size_x},
     {1, local_size_y} };
@@ -178,6 +179,12 @@ int main() {
   };
   auto pipelineGraphics = buildPipelineGraphics();
 
+  PushConstants pushValues{
+    .time = 0,
+    .Cx = local_size_x/2,
+    .Cy = local_size_y/2
+  };
+
   // Loop waiting for the window to close.
   while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
@@ -202,18 +209,17 @@ int main() {
 
         vk::CommandBufferBeginInfo bi{};
         cb.begin(bi);
+        // Image memory barrier to make sure that compute shader writes are finished before sampling from the texture
+        mytex.setLayout(cb, vk::ImageLayout::eGeneral);
         // Compute Shader
         cb.bindPipeline(vk::PipelineBindPoint::eCompute, *pipelineCompute);
         cb.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *pipelineLayoutCompute, 0, descriptorSets[0], nullptr);
         cb.pushConstants(*pipelineLayoutCompute, vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConstants), &pushValues);
         cb.dispatch(Nx/local_size_x,Ny/local_size_y,1); // rows/local_size_x, cols/local_size_y, 1
-//        // Memory Barrier
-//        mytex.barrier(cb, vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eFragmentShader, vk::DependencyFlagBits::eByRegion, vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eShaderRead, 0, 0);
         // Graphics Shader
         cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
         cb.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipelineGraphics);
-        cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayoutGraphics, 0, descriptorSets[0], nullptr);
-//        cb.pushConstants(*pipelineLayoutGraphics, vk::ShaderStageFlagBits::eFragment, 0, sizeof(PushConstants), &pushValues);
+        cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayoutGraphics, 0, descriptorSets[1], nullptr);
         cb.bindVertexBuffers(0, vbo.buffer(), vk::DeviceSize(0));
         cb.draw(vertices.size(), 1, 0, 0);
         cb.endRenderPass();
@@ -224,13 +230,4 @@ int main() {
   }
   device.waitIdle();
 
-  ////////////////////////////////////////
-  //
-  // Print result of compute shader
-//  float *values = static_cast<float*>( mytex.map(device) );
-//  std::for_each(values, values+Nx*Ny, [](float &value){ 
-//    std::cout << value << " "; 
-//  });
-//  std::cout << std::endl;
-//  mytex.unmap(device);
 }
