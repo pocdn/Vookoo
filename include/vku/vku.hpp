@@ -1419,8 +1419,10 @@ public:
   UniformBuffer() {
   }
 
-  /// Device local uniform buffer.
-  UniformBuffer(const vk::Device &device, const vk::PhysicalDeviceMemoryProperties &memprops, size_t size) : GenericBuffer(device, memprops, vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst, (vk::DeviceSize)size, vk::MemoryPropertyFlagBits::eDeviceLocal) {
+  /// Device uniform buffer.
+  ///   default memflags makes local uniform buffer (incompatible with map/unmap)
+  /// If want to update buffer using map/unmap, need to override default with memflags set to vk::MemoryPropertyFlagBits::eHostVisible
+  UniformBuffer(const vk::Device &device, const vk::PhysicalDeviceMemoryProperties &memprops, size_t size, vk::MemoryPropertyFlags memflags = vk::MemoryPropertyFlagBits::eDeviceLocal) : GenericBuffer(device, memprops, vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst, (vk::DeviceSize)size, memflags) {
   }
 };
 

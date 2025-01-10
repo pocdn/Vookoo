@@ -390,13 +390,13 @@ public:
     }
   }
 
-  static void defaultRenderFunc(vk::CommandBuffer cb, int imageIndex, vk::RenderPassBeginInfo &rpbi) {
+  static void defaultRenderFunc(vk::CommandBuffer cb, int currentFrame, vk::RenderPassBeginInfo &rpbi) {
     vk::CommandBufferBeginInfo bi{};
     cb.begin(bi);
     cb.end();
   }
 
-  typedef void (renderFunc_t)(vk::CommandBuffer cb, int imageIndex, vk::RenderPassBeginInfo &rpbi);
+  typedef void (renderFunc_t)(vk::CommandBuffer cb, int currentFrame, vk::RenderPassBeginInfo &rpbi);
 
   /// Build a static draw buffer. This will be rendered after any dynamic
   /// content generated in draw()
@@ -427,7 +427,7 @@ public:
 
   /// Queue the static command buffer for the next image in the swap chain. Optionally call a function to create a dynamic command buffer
   /// for uploading textures, changing uniforms etc.
-  void draw(const vk::Device &device, const vk::Queue &graphicsQueue, const std::function<void (vk::CommandBuffer cb, int imageIndex, vk::RenderPassBeginInfo &rpbi)> &dynamic = defaultRenderFunc) {
+  void draw(const vk::Device &device, const vk::Queue &graphicsQueue, const std::function<void (vk::CommandBuffer cb, int currentFrame, vk::RenderPassBeginInfo &rpbi)> &dynamic = defaultRenderFunc) {
     /* uncomment to use time ***********************************
     static auto start = std::chrono::high_resolution_clock::now();
     auto time = std::chrono::high_resolution_clock::now();
@@ -437,15 +437,16 @@ public:
     *************************************************************/
 
     auto umax = std::numeric_limits<uint64_t>::max();
-    static uint32_t imageIndex = 0;
+    static uint32_t currentFrame = 0;
+    uint32_t imageIndex = 0;
     
-    vk::Fence &rpcbFence = dynamicCommandBufferFences_[imageIndex];
+    vk::Fence &rpcbFence = dynamicCommandBufferFences_[currentFrame];
     {vk::Result result = device.waitForFences(rpcbFence, 1, umax);} // TODO use result
     
-    vk::Fence &cbFence = commandBufferFences_[imageIndex];
+    vk::Fence &cbFence = commandBufferFences_[currentFrame];
     {vk::Result result = device.waitForFences(cbFence, 1, umax);} // TODO use result
     
-    vk::Semaphore iaSema = *imageAcquireSemaphore_[imageIndex];
+    vk::Semaphore iaSema = *imageAcquireSemaphore_[currentFrame];
     auto acquired = device.acquireNextImageKHR(*swapchain_, umax, iaSema, VK_NULL_HANDLE, &imageIndex);
     if (acquired == vk::Result::eErrorOutOfDateKHR) {
       recreateSwapChain();
@@ -457,18 +458,18 @@ public:
     device.resetFences(rpcbFence);
     device.resetFences(cbFence);
 
-    vk::CommandBuffer pscb = *dynamicDrawBuffers_[imageIndex];
-    vk::Semaphore psSema = *dynamicSemaphore_[imageIndex];
+    vk::CommandBuffer pscb = *dynamicDrawBuffers_[currentFrame];
+    vk::Semaphore psSema = *dynamicSemaphore_[currentFrame];
 
     vk::ClearDepthStencilValue clearDepthValue{ 1.0f, 0 };
     std::array<vk::ClearValue, 2> clearColours{vk::ClearValue{clearColorValue()}, clearDepthValue};
     vk::RenderPassBeginInfo rpbi;
     rpbi.renderPass = *renderPass_;
-    rpbi.framebuffer = *framebuffers_[imageIndex];
+    rpbi.framebuffer = *framebuffers_[currentFrame];
     rpbi.renderArea = vk::Rect2D{{0, 0}, {width_, height_}};
     rpbi.clearValueCount = (uint32_t)clearColours.size();
     rpbi.pClearValues = clearColours.data();
-    dynamic(pscb, imageIndex, rpbi);
+    dynamic(pscb, currentFrame, rpbi);
 
     vk::PipelineStageFlags waitStages = vk::PipelineStageFlagBits::eColorAttachmentOutput;
 
@@ -483,8 +484,8 @@ public:
 
     {vk::Result result = graphicsQueue.submit(1, &submit, rpcbFence);} // TODO use result
 
-    vk::CommandBuffer cb = *staticDrawBuffers_[imageIndex];
-    vk::Semaphore ccSema = *commandCompleteSemaphore_[imageIndex];
+    vk::CommandBuffer cb = *staticDrawBuffers_[currentFrame];
+    vk::Semaphore ccSema = *commandCompleteSemaphore_[currentFrame];
 
     submit.waitSemaphoreCount = 1;
     submit.pWaitSemaphores = &psSema;
@@ -513,7 +514,7 @@ public:
       return;
     }
 
-    ++imageIndex %= numImageIndices();
+    ++currentFrame %= numImageIndices();
   }
 
   /// Return the queue family index used to present the surface to the display.
@@ -697,6 +698,16 @@ public:
         vk::PipelineStageFlagBits::eColorAttachmentOutput);
     rpm.dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentRead |
                                 vk::AccessFlagBits::eColorAttachmentWrite);
+
+    // A dependency to reset the layout of DepthStencil.
+    rpm.dependencyBegin(VK_SUBPASS_EXTERNAL, 0);
+    rpm.dependencySrcStageMask(
+        vk::PipelineStageFlagBits::eLateFragmentTests);
+    rpm.dependencyDstStageMask(
+        vk::PipelineStageFlagBits::eEarlyFragmentTests);
+    rpm.dependencySrcAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentWrite);
+    rpm.dependencyDstAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentRead |
+                                vk::AccessFlagBits::eDepthStencilAttachmentWrite);
 
     // Use the maker object to construct the vulkan object
     renderPass_ = rpm.createUnique(device_);

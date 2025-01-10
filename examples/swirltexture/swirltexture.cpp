@@ -1,5 +1,4 @@
 #include <vku/vku_framework.hpp>
-#include <vku/vku.hpp>
 #include <glm/glm.hpp>
 
 int main() {
@@ -41,11 +40,10 @@ int main() {
   // Create a Uniform Buffer Object
 
   struct Uniform { 
-    glm::vec4 color;
-    float t;
-  };
+    float t = 0.0;
+    float pad[3];
+  } uniform;
 
-  Uniform uniform{ .color={0, 1, 1, 1}, .t=0.0 };
   auto ubo = vku::UniformBuffer{device, fw.memprops(), sizeof(Uniform)};
   ubo.upload(device, fw.memprops(), window.commandPool(), fw.graphicsQueue(), uniform);
 
@@ -60,7 +58,7 @@ int main() {
     0x00, 0x00, 0xff, 0xff, // Blue
     0xff, 0x00, 0x00, 0xff, // Red
   };
-  vku::TextureImage2D texture{device, fw.memprops(), 2, 2, 1, vk::Format::eR8G8B8A8Unorm};
+  auto texture = vku::TextureImage2D{device, fw.memprops(), 2, 2, 1, vk::Format::eR8G8B8A8Unorm};
   texture.upload(device, pixels, window.commandPool(), fw.memprops(), fw.graphicsQueue());
 
   ////////////////////////////////////////
@@ -94,21 +92,19 @@ int main() {
   //
   // Create samplers
  
-  vku::SamplerMaker sm{};
-  vk::UniqueSampler sampler = sm.createUnique(device);
+  auto sampler = vku::SamplerMaker{}
+    .createUnique(device);
 
   ////////////////////////////////////////
   //
   // Build the descriptor sets
 
-  vku::DescriptorSetLayoutMaker dslm{};
-  auto layout = dslm
-    .buffer(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eVertex|vk::ShaderStageFlagBits::eFragment, 1)
+  auto layout = vku::DescriptorSetLayoutMaker{}
+    .buffer(0, vk::DescriptorType::eUniformBuffer, vk::ShaderStageFlagBits::eFragment, 1)
     .image(1, vk::DescriptorType::eCombinedImageSampler, vk::ShaderStageFlagBits::eFragment, 1)
     .createUnique(device);
 
-  vku::DescriptorSetMaker dsm{};
-  auto descriptorSets = dsm
+  auto descriptorSets = vku::DescriptorSetMaker{}
     .layout(*layout)
     .create(device, fw.descriptorPool());
 
@@ -116,8 +112,7 @@ int main() {
   //
   // Update the descriptor sets for the shader uniforms.
 
-  vku::DescriptorSetUpdater dsUpdater;
-  dsUpdater
+  vku::DescriptorSetUpdater{}
     .beginDescriptorSet(descriptorSets[0])
     // Set initial uniform buffer value
     .beginBuffers(0, 0, vk::DescriptorType::eUniformBuffer)
@@ -130,8 +125,7 @@ int main() {
   // Make a default pipeline layout. This shows how pointers
   // to resources are layed out.
   //
-  vku::PipelineLayoutMaker plm{};
-  auto pipelineLayout = plm
+  auto pipelineLayout = vku::PipelineLayoutMaker{}
     .descriptorSetLayout(*layout)
     .createUnique(device);
 
@@ -140,9 +134,7 @@ int main() {
   // Build the pipeline
 
   auto buildPipeline = [&]() {
-    vku::PipelineMaker pm{window.width(), window.height()};
-
-    return pm
+    return vku::PipelineMaker{ window.width(), window.height() }
       .shader(vk::ShaderStageFlagBits::eVertex, vert)
       .shader(vk::ShaderStageFlagBits::eFragment, frag)
       .vertexBinding(0, sizeof(Vertex))
@@ -153,8 +145,12 @@ int main() {
   auto pipeline = buildPipeline();
 
   const float dt = 1./16.;
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
+
+    int width, height;
+    glfwGetWindowSize(glfwwindow, &width, &height);
+    if (width==0 || height==0) continue;
 
     window.draw(device, fw.graphicsQueue(),
       [&](vk::CommandBuffer cb, int imageIndex, vk::RenderPassBeginInfo &rpbi) {
@@ -167,25 +163,34 @@ int main() {
           pipeline = buildPipeline();
         }
 
-        vk::CommandBufferBeginInfo cbbi{};
-        cb.begin(cbbi);
+        cb.begin(vk::CommandBufferBeginInfo{});
         cb.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
         cb.bindVertexBuffers(0, vbo.buffer(), vk::DeviceSize(0));
         cb.bindIndexBuffer(ibo.buffer(), vk::DeviceSize(0), vk::IndexType::eUint32);
-        cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, descriptorSets, nullptr);
-        // We may or may not need this barrier. It is probably a good precaution.
+        cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *pipelineLayout, 0, descriptorSets[0], nullptr);
+        // Barrier since updateBuffer is treated as a transfer operation
         ubo.barrier(
           cb,
-          vk::PipelineStageFlagBits::eHost, //srcStageMask
-          vk::PipelineStageFlagBits::eFragmentShader, //dstStageMask
+          vk::PipelineStageFlagBits::eFragmentShader, //srcStageMask
+          vk::PipelineStageFlagBits::eTransfer, //dstStageMask
           vk::DependencyFlagBits::eByRegion, //dependencyFlags
-          vk::AccessFlagBits::eHostWrite, //srcAccessMask
-          vk::AccessFlagBits::eShaderRead, //dstAccessMask
+          vk::AccessFlagBits::eShaderRead, //srcAccessMask
+          vk::AccessFlagBits::eTransferWrite, //dstAccessMask
           fw.graphicsQueueFamilyIndex(), //srcQueueFamilyIndex
           fw.graphicsQueueFamilyIndex() //dstQueueFamilyIndex
         );
         cb.updateBuffer(
           ubo.buffer(), 0, sizeof(Uniform), (const void*)&uniform
+        );
+        ubo.barrier(
+          cb,
+          vk::PipelineStageFlagBits::eTransfer, //srcStageMask
+          vk::PipelineStageFlagBits::eFragmentShader, //dstStageMask
+          vk::DependencyFlagBits::eByRegion, //dependencyFlags
+          vk::AccessFlagBits::eTransferWrite, //srcAccessMask
+          vk::AccessFlagBits::eShaderRead, //dstAccessMask
+          fw.graphicsQueueFamilyIndex(), //srcQueueFamilyIndex
+          fw.graphicsQueueFamilyIndex() //dstQueueFamilyIndex
         );
         cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
         cb.drawIndexed(indices.size(), 1, 0, 0, 0);
@@ -193,8 +198,6 @@ int main() {
         cb.end();
       }    
     );
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
 
     uniform.t += dt;
   }
