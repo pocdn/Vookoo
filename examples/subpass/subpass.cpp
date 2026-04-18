@@ -286,7 +286,7 @@ int main() {
       glm::vec3(0,0,1),    // Camera looks at
       glm::vec3(0,1,0)),   // Head is up
     .proj = glm::perspective(
-      glm::radians(45.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90° (extra wide) and 30° (quite zoomed in)
+      glm::radians(45.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90ï¿½ (extra wide) and 30ï¿½ (quite zoomed in)
       float(window.width())/window.height(), // Aspect Ratio. Depends on the size of your window. Notice that 4/3 == 800/600 == 1280/960, sounds familiar ?
       0.001f,                // Near clipping plane. Keep as big as possible, or you'll get precision issues.
       10.0f),              // Far clipping plane. Keep as little as possible.
@@ -474,12 +474,10 @@ int main() {
     vk::UniqueFramebuffer FrameBufferPassX = device.createFramebufferUnique(fbciPassX);
     return FrameBufferPassX;
   };
-  vk::UniqueFramebuffer myFrameBufferPass[] = {
-    //TODO: replace with for-loop over number of swap chain images
-    UniqueFramebuffers(0),
-    UniqueFramebuffers(1),
-    UniqueFramebuffers(2)
-  };
+  std::vector<vk::UniqueFramebuffer> myFrameBufferPass(swapchainImageCount);
+  for (size_t i = 0; i < swapchainImageCount; i++) {
+    myFrameBufferPass[i] = UniqueFramebuffers(i);
+  }
 
   // Match in order of attachments to clear the imageviews.
   // 0  colorAttachmentImage.imageView()
@@ -497,30 +495,16 @@ int main() {
   // sets the framebuffer and renderpass
 
   // One per swapChainImage
-  vk::RenderPassBeginInfo myRpbi[]={
-    //TODO: replace with for-loop over number of swap chain images
-    vku::RenderPassBeginInfoMaker{}
+  std::vector<vk::RenderPassBeginInfo> myRpbi(swapchainImageCount);
+  for (size_t i = 0; i < swapchainImageCount; i++) {
+    myRpbi[i] = vku::RenderPassBeginInfoMaker{}
       .renderPass( *myRenderPass )
-      .framebuffer( *myFrameBufferPass[0] )
+      .framebuffer( *myFrameBufferPass[i] )
       .renderArea( vk::Rect2D{{0, 0}, {window.width(), window.height()}} )
       .clearValueCount( (uint32_t) clearValues.size() )
       .pClearValues( clearValues.data() )
-      .createUnique(),
-    vku::RenderPassBeginInfoMaker{}
-      .renderPass( *myRenderPass )
-      .framebuffer( *myFrameBufferPass[1] )
-      .renderArea( vk::Rect2D{{0, 0}, {window.width(), window.height()}} )
-      .clearValueCount( (uint32_t) clearValues.size() )
-      .pClearValues( clearValues.data() )
-      .createUnique(),
-    vku::RenderPassBeginInfoMaker{}
-      .renderPass( *myRenderPass )
-      .framebuffer( *myFrameBufferPass[2] )
-      .renderArea( vk::Rect2D{{0, 0}, {window.width(), window.height()}} )
-      .clearValueCount( (uint32_t) clearValues.size() )
-      .pClearValues( clearValues.data() )
-      .createUnique()
-    };
+      .createUnique();
+  }
 
 
   ////////////////////////////////////////
@@ -824,7 +808,7 @@ int main() {
         pipelineFx = buildPipelineFx();
         pipelineDecal = buildPipelineDecal();
         uDataScene.proj = glm::perspective(
-          glm::radians(45.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90° (extra wide) and 30° (quite zoomed in)
+          glm::radians(45.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90ï¿½ (extra wide) and 30ï¿½ (quite zoomed in)
           float(window.width())/window.height(), // Aspect Ratio. Depends on the size of your window. Notice that 4/3 == 800/600 == 1280/960, sounds familiar ?
           0.001f,                // Near clipping plane. Keep as big as possible, or you'll get precision issues.
           10.0f);
