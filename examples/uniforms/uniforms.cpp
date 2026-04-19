@@ -69,11 +69,9 @@ int main() {
       {.colour = glm::vec4{1, 1, 1, 1}, .rotation = glm::mat4{1}},
     };
     // Read the pushConstants example first.
-    // 
+    //
     // Create a uniform buffer capable of N=U.size() "struct Uniform"s.
-    // By defualt, cannot update these buffers with normal memory writes because reading the buffer may happen at any time.
-    // However can override default memflags parameter as host visible to allow normal memory writes such as map/unmap usage
-    auto ubo = vku::UniformBuffer{device, fw.memprops(), sizeof(Uniform)*U.size(), vk::MemoryPropertyFlagBits::eHostVisible};
+    auto ubo = vku::UniformBuffer{device, fw.memprops(), sizeof(Uniform)*U.size()};
   
     // We will use this simple vertex description.
     // It has a 2D location (x, y) and a colour (r, g, b)
@@ -149,8 +147,6 @@ int main() {
       U.back().colour.r = (std::sin(frame * 0.01f) + 1.0f) / 2.0f;
       U.back().colour.g = (std::cos(frame * 0.01f) + 1.0f) / 2.0f;
 
-      ubo.updateLocal(device, (const void*)&U[0], sizeof(Uniform)*U.size());
-  
       // Unlike helloTriangle, we generate the command buffer dynamically
       // because it will contain different values on each frame.
       window.draw(
@@ -166,6 +162,16 @@ int main() {
           }
 
           cb.begin(vk::CommandBufferBeginInfo{});
+
+          ubo.barrier(cb,
+            vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+            vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+            fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
+          cb.updateBuffer(ubo.buffer(), 0, sizeof(Uniform)*U.size(), &U[0]);
+          ubo.barrier(cb,
+            vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+            vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+            fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
 
           cb.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
           cb.bindVertexBuffers(0, buffer.buffer(), vk::DeviceSize(0));

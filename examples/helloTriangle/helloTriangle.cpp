@@ -21,6 +21,7 @@ int main() {
   auto *title = "helloTriangle";
   auto glfwwindow = glfwCreateWindow(800, 800, title, nullptr, nullptr);
 
+  {
   // Initialise the Vookoo demo framework.
   vku::Framework fw{title};
   if (!fw.ok()) {
@@ -120,6 +121,7 @@ int main() {
 
   // Wait until all drawing is done and then kill the window.
   device.waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

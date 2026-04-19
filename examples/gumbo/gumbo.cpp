@@ -53,6 +53,7 @@ int main() {
 
   glfwSetCursorPosCallback(glfwwindow, mouse_callback);
 
+  {
   // Define framework options
   vku::FrameworkOptions fo = {
     .useTessellationShader = true,
@@ -105,7 +106,7 @@ int main() {
 
   std::vector<Uniform> U = { 
     { .Projection=glm::perspective(
-        glm::radians(30.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90° (extra wide) and 30° (quite zoomed in)
+        glm::radians(30.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90ï¿½ (extra wide) and 30ï¿½ (quite zoomed in)
         float(window.width())/window.height(), // Aspect Ratio. Depends on the size of your window. Notice that 4/3 == 800/600 == 1280/960, sounds familiar ?
         0.1f,                // Near clipping plane. Keep as big as possible, or you'll get precision issues.
         10.0f),              // Far clipping plane. Keep as little as possible.,
@@ -211,7 +212,7 @@ int main() {
         wh = window.height();
         pipeline = buildPipeline();
         U[0].Projection = glm::perspective(
-          glm::radians(30.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90° (extra wide) and 30° (quite zoomed in)
+          glm::radians(30.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90ï¿½ (extra wide) and 30ï¿½ (quite zoomed in)
           float(window.width())/window.height(), // Aspect Ratio. Depends on the size of your window. Notice that 4/3 == 800/600 == 1280/960, sounds familiar ?
           0.1f,                // Near clipping plane. Keep as big as possible, or you'll get precision issues.
           10.0f);
@@ -229,7 +230,7 @@ int main() {
   );
 
   // Loop waiting for the window to close.
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
     // Update dynamic uniforms
@@ -248,20 +249,45 @@ int main() {
         // at the time we create this command buffer.
         // Unlike push constant update, uniform buffer must be updated
         // _OUTSIDE_ of the (beginRenderPass ... endRenderPass)
+
+        // Pre-barrier: wait for previous frame's shader reads before transfer write (WAR).
+        // Execution dependency only â€” reads need no srcAccessMask entry.
+        // eAllGraphics covers vertex+tess+geometry+fragment reading this UBO.
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics,
+          vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{},
+          vk::AccessFlags{},
+          vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex()
+        );
+
         cb.updateBuffer(
           ubo.buffer(), 0, sizeof(Uniform)*U.size(), (const void*)&U[0]
+        );
+
+        // Post-barrier: make transfer write visible to next frame's shader reads.
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer,
+          vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{},
+          vk::AccessFlagBits::eTransferWrite,
+          vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex()
         );
 
         cb.end();
       }
     );
 
-    // Very crude method to prevent your GPU from overheating.
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Crude frame pacer. Proper fix: vk::PresentModeKHR::eFifo in swapchain creation
+    // blocks vkQueuePresentKHR until the display is ready, giving natural vsync pacing.
+    //std::this_thread::sleep_for(std::chrono::milliseconds(16)); // unnecessary: swapchain uses eFifo (vsync)
   }
 
   // Wait until all drawing is done and then kill the window.
   device.waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

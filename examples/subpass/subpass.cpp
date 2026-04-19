@@ -56,6 +56,7 @@ int main() {
 
   glfwSetCursorPosCallback(glfwwindow, mouse_callback);
 
+  {
   // Initialise the Vookoo demo framework.
   vku::Framework fw{title};
   if (!fw.ok()) {
@@ -73,8 +74,10 @@ int main() {
     fw.physicalDevice(),
     fw.graphicsQueueFamilyIndex(),
     glfwwindow,
-    { 
-      .desiredSwapChainImageFormat = vk::Format::eB8G8R8A8Srgb // chosen for High Dynamic Range
+    {
+      .desiredSwapChainImageFormat = vk::Format::eB8G8R8A8Srgb, // chosen for High Dynamic Range
+      .desiredPresentMode = vk::PresentModeKHR::eFifo,
+      .tripleBuffering = false  // double buffering: eFifo blocks acquireNextImageKHR, capping at vsync
     }
   );
   if (!window.ok()) {
@@ -415,25 +418,67 @@ int main() {
       // in submission order than the vkCmdBeginRenderPass used to begin the
       // render pass instance.` 
      .dependencyBegin(VK_SUBPASS_EXTERNAL, 0)
-     //VK_ACCESS_MEMORY_READ_BIT 
-     //VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
-     .dependencySrcAccessMask(vk::AccessFlagBits::eMemoryRead)
-     .dependencySrcStageMask(vk::PipelineStageFlagBits::eBottomOfPipe)
-     //VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT 
-     //VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-     .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite|vk::AccessFlagBits::eDepthStencilAttachmentWrite)
+     // FIX WAW: eBottomOfPipe in srcStageMask is a no-op (Vulkan spec: "specifies no stage
+     // of execution when specified in the first synchronization scope").  Use real stages.
+     // FIX WAR: WAR is a pure execution dependency — reads do NOT belong in srcAccessMask
+     // (that caused VUID-00868: eInputAttachmentRead is only legal at eFragmentShader).
+     // To cover previous-frame reads before this frame's writes we only need the read
+     // stages in srcStageMask; no read access flags in srcAccessMask are required.
+     //   eFragmentShader      — previous frame subpass 1 input-attachment reads
+     //   eEarlyFragmentTests  — previous frame subpass 1 depth-attachment reads (depth test)
+     //   eLateFragmentTests   — belt-and-suspenders for late depth writes
+     //   eColorAttachmentOutput — previous frame subpass 1 color write
+     .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput|
+                             vk::PipelineStageFlagBits::eFragmentShader|
+                             vk::PipelineStageFlagBits::eEarlyFragmentTests|
+                             vk::PipelineStageFlagBits::eLateFragmentTests)
+     // Only write accesses go in srcAccessMask (WAW coverage).
+     // Read accesses are covered by execution ordering alone (no srcAccess needed for WAR).
+     .dependencySrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite|
+                              vk::AccessFlagBits::eDepthStencilAttachmentWrite)
      .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput|vk::PipelineStageFlagBits::eEarlyFragmentTests)
+     .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite|vk::AccessFlagBits::eDepthStencilAttachmentWrite)
+     .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
+
+     // FIX WAR (swapchain): attachment 2 (swapchain) is first used in subpass 1, not subpass 0.
+     // EXTERNAL→0 covers attachments 0 and 1 only; it cannot cover attachment 2's layout
+     // transition at vkCmdNextSubpass.  The semaphore wait alone does NOT cover the implicit
+     // IMAGE_LAYOUT_TRANSITION — only a subpass dependency with dstSubpass=1 does.
+     // srcStageMask=eColorAttachmentOutput matches the semaphore wait stage used by vku::Window.
+     // srcAccessMask=0 (no prior writes to flush — presentation READ doesn't need srcAccess for WAR).
+     .dependencyBegin(VK_SUBPASS_EXTERNAL, 1)
+     .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+     .dependencySrcAccessMask(vk::AccessFlagBits::eNone)
+     .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+     .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
      .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
 
      .dependencyBegin(0, 1)
-     //VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT 
-     //VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+     // srcStageMask must include eLateFragmentTests: subpass 0 has depthWriteEnable=VK_TRUE,
+     // and depth writes land at LATE_FRAGMENT_TESTS, not EARLY_FRAGMENT_TESTS.
+     // Without it write_barriers=0 between the depth write and the layout transition → WAW.
+     .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput|
+                             vk::PipelineStageFlagBits::eEarlyFragmentTests|
+                             vk::PipelineStageFlagBits::eLateFragmentTests)
      .dependencySrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite|vk::AccessFlagBits::eDepthStencilAttachmentWrite)
-     .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput|vk::PipelineStageFlagBits::eEarlyFragmentTests)
-     //VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT
-     //VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-     .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite|vk::AccessFlagBits::eInputAttachmentRead)
-     .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput|vk::PipelineStageFlagBits::eFragmentShader)
+     // dstStage/dstAccess must cover ALL accesses subpass 1 performs on the depth attachment:
+     //   eEarlyFragmentTests / eDepthStencilAttachmentRead  — depth test reads (depthTestEnable=VK_TRUE)
+     //   eFragmentShader     / eInputAttachmentRead          — depth as input attachment
+     //   eColorAttachmentOutput / eColorAttachmentWrite      — swapchain color write
+     //   eLateFragmentTests  / eDepthStencilAttachmentWrite  — implicit storeOp=eStore write.
+     //     Even though depthWriteEnable=VK_FALSE in all subpass-1 pipelines, storeOp=eStore
+     //     still issues a SYNC_LATE_FRAGMENT_TESTS_DEPTH_STENCIL_ATTACHMENT_WRITE at
+     //     vkCmdEndRenderPass.  Without eLateFragmentTests+eDepthStencilAttachmentWrite in
+     //     dstStage/dstAccess, the layout-transition WRITE at vkCmdNextSubpass has no
+     //     write_barrier covering the storeOp WRITE → WAW.
+     .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput|
+                             vk::PipelineStageFlagBits::eFragmentShader|
+                             vk::PipelineStageFlagBits::eEarlyFragmentTests|
+                             vk::PipelineStageFlagBits::eLateFragmentTests)
+     .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite|
+                              vk::AccessFlagBits::eInputAttachmentRead|
+                              vk::AccessFlagBits::eDepthStencilAttachmentRead|
+                              vk::AccessFlagBits::eDepthStencilAttachmentWrite)
      .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
 
       // dependency: If dstSubpass is equal to VK_SUBPASS_EXTERNAL, 
@@ -886,7 +931,7 @@ int main() {
   //
  
   // Loop waiting for the window to close.
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
     // Update clock
@@ -906,47 +951,41 @@ int main() {
 
         cb.begin(vk::CommandBufferBeginInfo{});
 
-        // Define vector of uniform buffers to be updated on GPU with requisite parameters
-        #define TupleUpdateBufferInfo std::tuple<vku::UniformBuffer*, VkDeviceSize, VkDeviceSize, const void*>
-        std::vector< TupleUpdateBufferInfo > tupleUpdateBuffers {
-          // Scene's uniform buffer information
+        // Fixed-size array avoids per-frame heap allocation that causes periodic stutter.
+        using TupleUpdateBufferInfo = std::tuple<vku::UniformBuffer*, VkDeviceSize, VkDeviceSize, const void*>;
+        std::array<TupleUpdateBufferInfo, 2> tupleUpdateBuffers {{
           {&uboScene[imageIndex], 0, sizeof(UniformBufferObjectScene), &uDataScene},
-          // Fx's uniform buffer information
           {   &uboFx[imageIndex], 0, sizeof(UniformBufferObjectFx),    &uDataFx},
-        };
+        }};
 
-        // Sync all local uniform values with corresponding values on GPU
+        // Sync all local uniform values with corresponding values on GPU.
+        // Per-image UBOs + fence wait inside window.draw() guarantee the prior
+        // frame's reads on this imageIndex are done — no pre-barrier needed.
         for (auto [dstBuffer, dstOffset, dataSize, pData]: tupleUpdateBuffers) {
-          // We may or may not need this barrier. It is probably a good precaution.
+          cb.updateBuffer( dstBuffer->buffer(), dstOffset, dataSize, pData );
+          // Post-barrier: make the transfer write visible to shader uniform reads.
           dstBuffer->barrier(
             cb,
-            vk::PipelineStageFlagBits::eHost,           //srcStageMask
-            vk::PipelineStageFlagBits::eFragmentShader, //dstStageMask
-            vk::DependencyFlagBits::eByRegion,          //dependencyFlags
-            vk::AccessFlagBits::eHostWrite,             //srcAccessMask
-            vk::AccessFlagBits::eShaderRead,            //dstAccessMask
+            vk::PipelineStageFlagBits::eTransfer,       //srcStageMask
+            vk::PipelineStageFlagBits::eAllGraphics,    //dstStageMask
+            vk::DependencyFlags{},                      //dependencyFlags
+            vk::AccessFlagBits::eTransferWrite,         //srcAccessMask
+            vk::AccessFlagBits::eUniformRead,           //dstAccessMask
             fw.graphicsQueueFamilyIndex(),              //srcQueueFamilyIndex
             fw.graphicsQueueFamilyIndex()               //dstQueueFamilyIndex
           );
-  
-          // Instead of pushConstants() we use updateBuffer(). This has a max of 64k.
-          // Like pushConstants(), this takes a copy of the uniform buffer
-          // at the time we create this command buffer.
-          // Unlike push constant update, uniform buffer must be updated
-          // _OUTSIDE_ of the (beginRenderPass ... endRenderPass)
-          cb.updateBuffer( dstBuffer->buffer(), dstOffset, dataSize, pData );
         }
 
         cb.end();
       }
     );
 
-    // Very crude method to prevent your GPU from overheating.
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // No sleep needed: double buffering (tripleBuffering=false) + eFifo naturally caps at vsync.
   }
 
   // Wait until all drawing is done and then kill the window.
   device.waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

@@ -21,6 +21,7 @@ int main() {
   auto *title = "helloTesselationShader";
   auto glfwwindow = glfwCreateWindow(800, 800, title, nullptr, nullptr);
 
+  {
   // Define framework options
   vku::FrameworkOptions fo = {
     .useTessellationShader = true,
@@ -121,18 +122,20 @@ int main() {
   );
 
   // Loop waiting for the window to close.
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
     // draw patches.
     window.draw(device, fw.graphicsQueue());
 
-    // Very crude method to prevent your GPU from overheating.
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Crude frame pacer. Proper fix: vk::PresentModeKHR::eFifo in swapchain creation
+    // blocks vkQueuePresentKHR until the display is ready, giving natural vsync pacing.
+    //std::this_thread::sleep_for(std::chrono::milliseconds(16)); // unnecessary: swapchain uses eFifo (vsync)
   }
 
   // Wait until all drawing is done and then kill the window.
   device.waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

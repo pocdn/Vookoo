@@ -8,6 +8,7 @@ int main() {
   auto *title = "swirltexture";
   auto glfwwindow = glfwCreateWindow(800, 800, title, nullptr, nullptr);
 
+  {
   vku::Framework fw{title};
   if (!fw.ok()) {
     std::cout << "Framework creation failed" << std::endl;
@@ -203,6 +204,7 @@ int main() {
   }
 
   device.waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

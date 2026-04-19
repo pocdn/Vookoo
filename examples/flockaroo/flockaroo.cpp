@@ -14,6 +14,7 @@ int main() {
   const char *title = "flockaroo";
   auto glfwwindow = glfwCreateWindow(1024, 1024, title, nullptr, nullptr);
 
+  {
   vku::Framework fw{title};
   if (!fw.ok()) {
     std::cout << "Framework creation failed" << std::endl;
@@ -272,28 +273,17 @@ int main() {
       // in submission order than the vkCmdBeginRenderPass used to begin the
       // render pass instance.` 
      .dependencyBegin(VK_SUBPASS_EXTERNAL, 0)
-     //VK_ACCESS_INPUT_ATTACHMENT_READ_BIT
-     //VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-     .dependencySrcAccessMask(vk::AccessFlagBits::eInputAttachmentRead)
-     .dependencySrcStageMask(vk::PipelineStageFlagBits::eFragmentShader)
-     //VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-     //VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-     .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
-     .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
-     .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
-     // dependency: If dstSubpass is equal to VK_SUBPASS_EXTERNAL, 
-     // the second synchronization scope includes commands that occur later
-     // in submission order than the vkCmdEndRenderPass used to end the 
-     // render pass instance.
-     .dependencyBegin(0, VK_SUBPASS_EXTERNAL)
-     //VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-     //VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+     // WAW: prior even-frame color write; WAR: prior odd-frame fragment read.
+     .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eFragmentShader)
      .dependencySrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+     .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+     .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+     .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
+     .dependencyBegin(0, VK_SUBPASS_EXTERNAL)
      .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
-     //VK_ACCESS_INPUT_ATTACHMENT_READ_BIT
-     //VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-     .dependencyDstAccessMask(vk::AccessFlagBits::eInputAttachmentRead)
+     .dependencySrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
      .dependencyDstStageMask(vk::PipelineStageFlagBits::eFragmentShader)
+     .dependencyDstAccessMask(vk::AccessFlagBits::eShaderRead)
      .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
      // Finally use the maker method to construct this renderpass
      .createUnique(device);
@@ -362,7 +352,7 @@ int main() {
   };
 
   int iFrame = 0;
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
     window.draw(device, fw.graphicsQueue(),
@@ -383,9 +373,15 @@ int main() {
         vk::CommandBufferBeginInfo bi{};
         cb.begin(bi);
 
-        // Copy the uniform data to the buffer. (note this is done
-        // inline and so we can discard "unform" afterwards)
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
         cb.updateBuffer(ubo.buffer(), 0, sizeof(Uniform), &uniform);
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
 
         // vertex attributes common/shared by following render passes
         cb.bindVertexBuffers(0, vbo.buffer(), vk::DeviceSize(0));
@@ -410,11 +406,15 @@ int main() {
         
     );
 
-    //std::this_thread::sleep_for(std::chrono::milliseconds(16)); // unnecessary with swapchain present mode being "Fifo" which is V-SYNC limited.
+    // Crude frame pacer. Proper fix: vk::PresentModeKHR::eFifo in swapchain creation
+    // blocks vkQueuePresentKHR until the display is ready, giving natural vsync pacing.
+    //std::this_thread::sleep_for(std::chrono::milliseconds(16)); // unnecessary: swapchain uses eFifo (vsync)
     iFrame++;
   }
 
+  // Wait until all drawing is done and then kill the window.
   device.waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

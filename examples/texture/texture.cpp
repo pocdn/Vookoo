@@ -10,6 +10,7 @@ int main() {
   const char *title = "texture";
   auto glfwwindow = glfwCreateWindow(800, 800, title, nullptr, nullptr);
 
+  {
   // Initialise the Vookoo demo framework.
   vku::Framework fw{title};
   if (!fw.ok()) {
@@ -141,7 +142,9 @@ int main() {
     window.draw(fw.device(), fw.graphicsQueue());
   }
 
+  // Wait until all drawing is done and then kill the window.
   device.waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

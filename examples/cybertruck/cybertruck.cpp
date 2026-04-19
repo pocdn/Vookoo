@@ -19,6 +19,7 @@ int main() {
   auto *title = "CyberTruck";
   auto glfwwindow = glfwCreateWindow(1280, 720, title, nullptr, nullptr);
 
+  {
   vku::Framework fw{title};
   if (!fw.ok()) {
     std::cout << "Framework creation failed" << std::endl;
@@ -154,7 +155,7 @@ int main() {
  
   int iFrame = 0;
   double xpos=window.width()/2.0, ypos=window.height()/2.0;
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
     int state = glfwGetMouseButton(glfwwindow, GLFW_MOUSE_BUTTON_LEFT);
@@ -183,8 +184,15 @@ int main() {
         vk::CommandBufferBeginInfo bi{};
         cb.begin(bi);
 
-        // Copy the uniform data to the buffer.
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
         cb.updateBuffer(ubo.buffer(), 0, sizeof(Uniform), &uniform);
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
 
         cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
         cb.bindVertexBuffers(0, buffer.buffer(), vk::DeviceSize(0));
@@ -197,12 +205,14 @@ int main() {
       }
     );
 
-    // Very crude method to prevent your GPU from overheating.
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Crude frame pacer. Proper fix: vk::PresentModeKHR::eFifo in swapchain creation
+    // blocks vkQueuePresentKHR until the display is ready, giving natural vsync pacing.
+    //std::this_thread::sleep_for(std::chrono::milliseconds(16)); // unnecessary: swapchain uses eFifo (vsync)
   }
 
   // Wait until all drawing is done and then kill the window.
   device.waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

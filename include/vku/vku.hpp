@@ -1744,7 +1744,7 @@ public:
     // Is it me, or are these the same?
     switch (oldLayout) {
       case il::eUndefined: break;
-      case il::eGeneral: srcMask = afb::eTransferWrite; srcStageMask=vk::PipelineStageFlagBits::eTransfer; break;
+      case il::eGeneral: srcMask = afb::eShaderWrite|afb::eTransferWrite; srcStageMask=vk::PipelineStageFlagBits::eComputeShader|vk::PipelineStageFlagBits::eTransfer; break;
       case il::eColorAttachmentOptimal: srcMask = afb::eColorAttachmentWrite; srcStageMask=vk::PipelineStageFlagBits::eColorAttachmentOutput; break;
       case il::eDepthStencilAttachmentOptimal: srcMask = afb::eDepthStencilAttachmentWrite; srcStageMask=vk::PipelineStageFlagBits::eEarlyFragmentTests; break;
       case il::eDepthStencilReadOnlyOptimal: srcMask = afb::eDepthStencilAttachmentRead; srcStageMask=vk::PipelineStageFlagBits::eEarlyFragmentTests; break;
@@ -1757,7 +1757,7 @@ public:
 
     switch (newLayout) {
       case il::eUndefined: break;
-      case il::eGeneral: dstMask = afb::eTransferWrite; dstStageMask=vk::PipelineStageFlagBits::eTransfer; break;
+      case il::eGeneral: dstMask = afb::eShaderWrite|afb::eShaderRead|afb::eTransferWrite; dstStageMask=vk::PipelineStageFlagBits::eComputeShader|vk::PipelineStageFlagBits::eTransfer; break;
       case il::eColorAttachmentOptimal: dstMask = afb::eColorAttachmentWrite; dstStageMask=vk::PipelineStageFlagBits::eColorAttachmentOutput; break;
       case il::eDepthStencilAttachmentOptimal: dstMask = afb::eDepthStencilAttachmentWrite; dstStageMask=vk::PipelineStageFlagBits::eEarlyFragmentTests; break;
       case il::eDepthStencilReadOnlyOptimal: dstMask = afb::eDepthStencilAttachmentRead; dstStageMask=vk::PipelineStageFlagBits::eEarlyFragmentTests; break;

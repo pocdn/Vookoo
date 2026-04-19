@@ -26,6 +26,7 @@ int main() {
   const char *title = "threaded";
   auto glfwwindow = glfwCreateWindow(800, 800, title,  nullptr, nullptr);
 
+  {
   // Initialise the Vookoo demo framework.
   vku::Framework fw{title};
   if (!fw.ok()) {
@@ -143,7 +144,7 @@ int main() {
   int frame = 0;
 
   // Loop waiting for the window to close.
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
     // we generate the different fractions of the command buffer dynamically
@@ -228,14 +229,16 @@ int main() {
       }
     );
 
-    // Very crude method to prevent your GPU from overheating.
-    //std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Crude frame pacer. Proper fix: vk::PresentModeKHR::eFifo in swapchain creation
+    // blocks vkQueuePresentKHR until the display is ready, giving natural vsync pacing.
+    //std::this_thread::sleep_for(std::chrono::milliseconds(16)); // unnecessary: swapchain uses eFifo (vsync)
 
     ++frame;
   }
 
   // Wait until all drawing is done and then kill the window.
   fw.device().waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

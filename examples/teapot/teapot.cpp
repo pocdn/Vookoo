@@ -37,6 +37,7 @@ int main(int argc, char *argv[])
   const char *title = "teapot";
   auto glfwwindow = glfwCreateWindow(800, 600, title, nullptr, nullptr);
 
+  {
   // Initialise the Vookoo demo framework.
   vku::Framework fw{title};
   if (!fw.ok()) {
@@ -283,16 +284,19 @@ int main(int argc, char *argv[])
      .subpassBegin(vk::PipelineBindPoint::eGraphics)
      .subpassDepthStencilAttachment(vk::ImageLayout::eDepthStencilAttachmentOptimal, 0)
 
-  // A dependency to reset the layout of the depth buffer to eUndefined.
-  // eLateFragmentTests is the stage where the Z buffer is written.
+  // WAW: prior frame's depth write; WAR: prior frame's shadow-map sample in fragment shader.
      .dependencyBegin(VK_SUBPASS_EXTERNAL, 0)
-     .dependencySrcStageMask(vk::PipelineStageFlagBits::eBottomOfPipe)
-     .dependencyDstStageMask(vk::PipelineStageFlagBits::eLateFragmentTests)
+     .dependencySrcStageMask(vk::PipelineStageFlagBits::eLateFragmentTests | vk::PipelineStageFlagBits::eFragmentShader)
+     .dependencySrcAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentWrite)
+     .dependencyDstStageMask(vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests)
+     .dependencyDstAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite)
 
-  // A dependency to transition to eShaderReadOnlyOptimal.
+  // Make depth write visible to the fragment shader that samples the shadow map.
      .dependencyBegin(0, VK_SUBPASS_EXTERNAL)
      .dependencySrcStageMask(vk::PipelineStageFlagBits::eLateFragmentTests)
-     .dependencyDstStageMask(vk::PipelineStageFlagBits::eBottomOfPipe)
+     .dependencySrcAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentWrite)
+     .dependencyDstStageMask(vk::PipelineStageFlagBits::eFragmentShader)
+     .dependencyDstAccessMask(vk::AccessFlagBits::eShaderRead)
 
   // Construct the renderpass
      .createUnique(fw.device());
@@ -358,7 +362,7 @@ int main(int argc, char *argv[])
   int32_t  vertexOffset = 0;
   uint32_t firstInstance = 0;
 
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
     window.draw(fw.device(), fw.graphicsQueue(),
@@ -392,9 +396,15 @@ int main(int argc, char *argv[])
         vk::CommandBufferBeginInfo bi{};
         cb.begin(bi);
 
-        // Copy the uniform data to the buffer. (note this is done
-        // inline and so we can discard "unform" afterwards)
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
         cb.updateBuffer(ubo.buffer(), 0, sizeof(Uniform), &uniform);
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
 
         // First renderpass. Draw the shadow.
         cb.beginRenderPass(shadowRpbi, vk::SubpassContents::eInline);
@@ -420,10 +430,14 @@ int main(int argc, char *argv[])
       }
     );
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Crude frame pacer. Proper fix: vk::PresentModeKHR::eFifo in swapchain creation
+    // blocks vkQueuePresentKHR until the display is ready, giving natural vsync pacing.
+    //std::this_thread::sleep_for(std::chrono::milliseconds(16)); // unnecessary: swapchain uses eFifo (vsync)
   }
 
+  // Wait until all drawing is done and then kill the window.
   fw.device().waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

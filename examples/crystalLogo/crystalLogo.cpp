@@ -55,6 +55,7 @@ int main() {
 
   glfwSetCursorPosCallback(glfwwindow, mouse_callback);
 
+  {
   // Define framework options
   vku::FrameworkOptions fo = {
     .useMultiView = true
@@ -441,15 +442,13 @@ int main() {
       // in submission order than the vkCmdBeginRenderPass used to begin the
       // render pass instance.` 
      .dependencyBegin(VK_SUBPASS_EXTERNAL, 0)
-     .dependencySrcStageMask(vk::PipelineStageFlagBits::eFragmentShader)
+     // WAW: prior frame's color write; WAR: prior frame's shader read.
+     // srcStageMask covers both; srcAccessMask flushes the write (WAR needs none).
+     .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eFragmentShader)
+     .dependencySrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
      .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
-     .dependencySrcAccessMask(vk::AccessFlagBits::eShaderRead)
      .dependencyDstAccessMask(vk::AccessFlagBits::eMemoryWrite)
      .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
-      // dependency: If dstSubpass is equal to VK_SUBPASS_EXTERNAL, 
-      // the second synchronization scope includes commands that occur later
-      // in submission order than the vkCmdEndRenderPass used to end the 
-      // render pass instance.
      .dependencyBegin(0, VK_SUBPASS_EXTERNAL)
      .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
      .dependencyDstStageMask(vk::PipelineStageFlagBits::eFragmentShader)
@@ -905,15 +904,12 @@ int main() {
         // in submission order than the vkCmdBeginRenderPass used to begin the
         // render pass instance.` 
        .dependencyBegin(VK_SUBPASS_EXTERNAL, 0)
-       .dependencySrcStageMask(vk::PipelineStageFlagBits::eFragmentShader)
+       // WAW: prior frame's color write; WAR: prior frame's shader read.
+       .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eFragmentShader)
+       .dependencySrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
        .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
-       .dependencySrcAccessMask(vk::AccessFlagBits::eShaderRead)
        .dependencyDstAccessMask(vk::AccessFlagBits::eMemoryWrite)
        .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
-        // dependency: If dstSubpass is equal to VK_SUBPASS_EXTERNAL, 
-        // the second synchronization scope includes commands that occur later
-        // in submission order than the vkCmdEndRenderPass used to end the 
-        // render pass instance.
        .dependencyBegin(0, VK_SUBPASS_EXTERNAL)
        .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
        .dependencyDstStageMask(vk::PipelineStageFlagBits::eFragmentShader)
@@ -1090,7 +1086,7 @@ int main() {
 
   Uniform_vert uniform_vert {
     .projection = clip * glm::perspective(
-      glm::radians(30.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90° (extra wide) and 30° (quite zoomed in)
+      glm::radians(30.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90ï¿½ (extra wide) and 30ï¿½ (quite zoomed in)
       float(window.width())/window.height(), // Aspect Ratio. Depends on the size of your window. Notice that 4/3 == 800/600 == 1280/960, sounds familiar ?
       0.1f,                // Near clipping plane. Keep as big as possible, or you'll get precision issues.
       10.0f),              // Far clipping plane. Keep as little as possible.
@@ -1103,7 +1099,7 @@ int main() {
 
   Uniform_vert uniformContent_vert {
     .projection = clip * glm::perspective(
-      glm::radians(30.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90° (extra wide) and 30° (quite zoomed in)
+      glm::radians(30.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90ï¿½ (extra wide) and 30ï¿½ (quite zoomed in)
       float(window.width())/window.height(), // Aspect Ratio. Depends on the size of your window. Notice that 4/3 == 800/600 == 1280/960, sounds familiar ?
       0.1f,                // Near clipping plane. Keep as big as possible, or you'll get precision issues.
       10.0f),              // Far clipping plane. Keep as little as possible.
@@ -1158,8 +1154,24 @@ int main() {
         cb.begin(bi);
 
         // Pass: Render the displacement into the displacementFbo
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
+        ubo_frag.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
         cb.updateBuffer(ubo.buffer(), 0, sizeof(Uniform_vert), &uniform_vert);
         cb.updateBuffer(ubo_frag.buffer(), 0, sizeof(Uniform_frag), &uniform_frag);
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
+        ubo_frag.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
         cb.beginRenderPass(displacementRpbi, vk::SubpassContents::eInline);
         cb.bindVertexBuffers(0, buffer.buffer(), vk::DeviceSize(0));
         cb.bindIndexBuffer(ibo.buffer(), vk::DeviceSize(0), vk::IndexType::eUint32);
@@ -1185,8 +1197,24 @@ int main() {
         cb.endRenderPass();
 
         // Pass: Render into the contentFbo
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
+        uboContent_frag.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
         cb.updateBuffer(ubo.buffer(), 0, sizeof(Uniform_vert), &uniformContent_vert);
         cb.updateBuffer(uboContent_frag.buffer(), 0, sizeof(UniformContent_frag), &uniformcontent_frag);
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
+        uboContent_frag.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
         cb.beginRenderPass(contentRpbi, vk::SubpassContents::eInline);
         cb.bindVertexBuffers(0, bufferContent.buffer(), vk::DeviceSize(0));
         cb.bindIndexBuffer(iboContent.buffer(), vk::DeviceSize(0), vk::IndexType::eUint32);
@@ -1203,8 +1231,24 @@ int main() {
         cb.endRenderPass();
 
         // Pass: Render contentFbo into each face of the cubemap of reflectionreflectorFbo
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
+        uboReflectionReflector_frag.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
         cb.updateBuffer(ubo.buffer(), 0, sizeof(Uniform_vert), &uniform_vert);
         cb.updateBuffer(uboReflectionReflector_frag.buffer(), 0, sizeof(UniformReflectionReflector_frag), &uniformReflectionReflector_frag);
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
+        uboReflectionReflector_frag.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
         cb.beginRenderPass(reflectionreflectorRpbi, vk::SubpassContents::eInline);
         cb.bindVertexBuffers(0, bufferContent.buffer(), vk::DeviceSize(0));
         cb.bindIndexBuffer(iboContent.buffer(), vk::DeviceSize(0), vk::IndexType::eUint32);
@@ -1247,6 +1291,7 @@ int main() {
 
   // Wait until all drawing is done and then kill the window.
   device.waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 

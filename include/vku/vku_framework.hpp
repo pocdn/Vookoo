@@ -237,6 +237,9 @@ struct WindowOptions
 {
   vk::Format desiredSwapChainImageFormat = vk::Format::eB8G8R8A8Unorm;
   vk::PresentModeKHR desiredPresentMode = vk::PresentModeKHR::eFifo;
+  // true = minImageCount+1 (triple buffering, GPU runs uncapped under eFifo)
+  // false = minImageCount   (double buffering, eFifo naturally caps at vsync)
+  bool tripleBuffering = false;
 };
 
 /// This class wraps a window, a surface and a swap chain for that surface.
@@ -478,12 +481,18 @@ public:
     rpbi.pClearValues = clearColours.data();
     dynamic(pscb, imageIndex, rpbi);
 
-    vk::PipelineStageFlags waitStages = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    // Submit 1: dynamic CB (UBO transfers). Waits for image acquire only at
+    // eColorAttachmentOutput — the dynamic CB doesn't write to the swapchain image.
+    vk::PipelineStageFlags waitStagesAcquire = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    // Submit 2: static CB (rendering). Waits for dynamic CB at eVertexShader so that
+    // UBO writes from cb.updateBuffer are visible before vertex shader reads them.
+    // eColorAttachmentOutput alone would not cover vertex shader.
+    vk::PipelineStageFlags waitStagesDynamic = vk::PipelineStageFlagBits::eVertexShader;
 
     vk::SubmitInfo submit;
     submit.waitSemaphoreCount = 1;
     submit.pWaitSemaphores = &iaSema;
-    submit.pWaitDstStageMask = &waitStages;
+    submit.pWaitDstStageMask = &waitStagesAcquire;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &pscb;
     submit.signalSemaphoreCount = 1;
@@ -496,7 +505,7 @@ public:
 
     submit.waitSemaphoreCount = 1;
     submit.pWaitSemaphores = &psSema;
-    submit.pWaitDstStageMask = &waitStages;
+    submit.pWaitDstStageMask = &waitStagesDynamic;
     submit.commandBufferCount = 1;
     submit.pCommandBuffers = &cb;
     submit.signalSemaphoreCount = 1;
@@ -624,7 +633,7 @@ public:
                                               : vk::SharingMode::eExclusive;
     swapinfo.imageExtent = surfaceCaps.currentExtent;
     swapinfo.surface = surface_.get();
-    swapinfo.minImageCount = surfaceCaps.minImageCount + 1;
+    swapinfo.minImageCount = surfaceCaps.minImageCount + (options.tripleBuffering ? 1 : 0);
     swapinfo.imageFormat = swapchainImageFormat_;
     swapinfo.imageColorSpace = swapchainColorSpace_;
     swapinfo.imageExtent = surfaceCaps.currentExtent;

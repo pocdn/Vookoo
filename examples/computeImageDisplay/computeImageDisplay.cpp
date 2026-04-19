@@ -209,13 +209,45 @@ int main() {
 
         vk::CommandBufferBeginInfo bi{};
         cb.begin(bi);
-        // Image memory barrier to make sure that compute shader writes are finished before sampling from the texture
+        // First frame: transition layout; subsequent frames: no-op (already eGeneral)
         mytex.setLayout(cb, vk::ImageLayout::eGeneral);
+
+        // Synchronize previous fragment read -> compute write (needed every frame after frame 0)
+        vk::ImageMemoryBarrier fragToComputeBarrier{};
+        fragToComputeBarrier.srcAccessMask = vk::AccessFlagBits::eShaderRead;
+        fragToComputeBarrier.dstAccessMask = vk::AccessFlagBits::eShaderWrite;
+        fragToComputeBarrier.oldLayout = vk::ImageLayout::eGeneral;
+        fragToComputeBarrier.newLayout = vk::ImageLayout::eGeneral;
+        fragToComputeBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        fragToComputeBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        fragToComputeBarrier.image = mytex.image();
+        fragToComputeBarrier.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
+        cb.pipelineBarrier(
+          vk::PipelineStageFlagBits::eFragmentShader,
+          vk::PipelineStageFlagBits::eComputeShader,
+          {}, nullptr, nullptr, fragToComputeBarrier);
+
         // Compute Shader
         cb.bindPipeline(vk::PipelineBindPoint::eCompute, *pipelineCompute);
         cb.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *pipelineLayoutCompute, 0, descriptorSets[0], nullptr);
         cb.pushConstants(*pipelineLayoutCompute, vk::ShaderStageFlagBits::eCompute, 0, sizeof(PushConstants), &pushValues);
         cb.dispatch(Nx/local_size_x,Ny/local_size_y,1); // rows/local_size_x, cols/local_size_y, 1
+
+        // Synchronize compute write -> fragment shader read (same eGeneral layout, so setLayout no-ops)
+        vk::ImageMemoryBarrier computeToFragBarrier{};
+        computeToFragBarrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite;
+        computeToFragBarrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+        computeToFragBarrier.oldLayout = vk::ImageLayout::eGeneral;
+        computeToFragBarrier.newLayout = vk::ImageLayout::eGeneral;
+        computeToFragBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        computeToFragBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        computeToFragBarrier.image = mytex.image();
+        computeToFragBarrier.subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
+        cb.pipelineBarrier(
+          vk::PipelineStageFlagBits::eComputeShader,
+          vk::PipelineStageFlagBits::eFragmentShader,
+          {}, nullptr, nullptr, computeToFragBarrier);
+
         // Graphics Shader
         cb.beginRenderPass(rpbi, vk::SubpassContents::eInline);
         cb.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipelineGraphics);

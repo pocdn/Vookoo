@@ -49,6 +49,7 @@ int main() {
 
   glfwSetCursorPosCallback(glfwwindow, mouse_callback);
 
+  {
   // Define framework options
   vku::FrameworkOptions fo = {
     .useMultiView = true
@@ -353,15 +354,12 @@ int main() {
         // in submission order than the vkCmdBeginRenderPass used to begin the
         // render pass instance.` 
        .dependencyBegin(VK_SUBPASS_EXTERNAL, 0)
-       .dependencySrcStageMask(vk::PipelineStageFlagBits::eFragmentShader)
+       // WAW: prior frame's color write; WAR: prior frame's shader read.
+       .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eFragmentShader)
+       .dependencySrcAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
        .dependencyDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
-       .dependencySrcAccessMask(vk::AccessFlagBits::eShaderRead)
        .dependencyDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
        .dependencyDependencyFlags(vk::DependencyFlagBits::eByRegion)
-        // dependency: If dstSubpass is equal to VK_SUBPASS_EXTERNAL, 
-        // the second synchronization scope includes commands that occur later
-        // in submission order than the vkCmdEndRenderPass used to end the 
-        // render pass instance.
        .dependencyBegin(0, VK_SUBPASS_EXTERNAL)
        .dependencySrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
        .dependencyDstStageMask(vk::PipelineStageFlagBits::eFragmentShader)
@@ -481,7 +479,7 @@ int main() {
 
   Uniform_vert uniform_vert {
     .projection = /*invertYhalfZclipspace * */glm::perspective(
-      glm::radians(30.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90° (extra wide) and 30° (quite zoomed in)
+      glm::radians(30.0f), // The vertical Field of View, in radians: the amount of "zoom". Think "camera lens". Usually between 90ï¿½ (extra wide) and 30ï¿½ (quite zoomed in)
       float(window.width())/window.height(), // Aspect Ratio. Depends on the size of your window. Notice that 4/3 == 800/600 == 1280/960, sounds familiar ?
       0.1f,                // Near clipping plane. Keep as big as possible, or you'll get precision issues.
       10.0f),              // Far clipping plane. Keep as little as possible.
@@ -492,7 +490,7 @@ int main() {
     .world = glm::mat4(1.0),
   };
 
-  while (!glfwWindowShouldClose(glfwwindow)) {
+  while (!glfwWindowShouldClose(glfwwindow) && glfwGetKey(glfwwindow, GLFW_KEY_ESCAPE) != GLFW_PRESS) {
     glfwPollEvents();
 
     window.draw(
@@ -501,7 +499,15 @@ int main() {
         vk::CommandBufferBeginInfo bi{};
         cb.begin(bi);
 
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eAllGraphics, vk::PipelineStageFlagBits::eTransfer,
+          vk::DependencyFlags{}, vk::AccessFlags{}, vk::AccessFlagBits::eTransferWrite,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
         cb.updateBuffer(ubo.buffer(), 0, sizeof(Uniform_vert), &uniform_vert);
+        ubo.barrier(cb,
+          vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eAllGraphics,
+          vk::DependencyFlags{}, vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eUniformRead,
+          fw.graphicsQueueFamilyIndex(), fw.graphicsQueueFamilyIndex());
 
         // Pass 1: Render to cubemap, each face is independent view determined by gl_ViewIndex in vertex shader
         cb.beginRenderPass(TriangleRpbi, vk::SubpassContents::eInline);
@@ -533,12 +539,14 @@ int main() {
 
     uniform_vert.world = mouse_rotation * uniform_vert.world;
 
-    // Very crude method to prevent your GPU from overheating.
-    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Crude frame pacer. Proper fix: vk::PresentModeKHR::eFifo in swapchain creation
+    // blocks vkQueuePresentKHR until the display is ready, giving natural vsync pacing.
+    //std::this_thread::sleep_for(std::chrono::milliseconds(16)); // unnecessary: swapchain uses eFifo (vsync)
   }
 
   // Wait until all drawing is done and then kill the window.
   device.waitIdle();
+  } // all Vulkan objects destroyed here, before GLFW teardown
   glfwDestroyWindow(glfwwindow);
   glfwTerminate();
 
