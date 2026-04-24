@@ -46,6 +46,7 @@ function(example_sdl2 order exname)
   )
 
   target_link_libraries(${order}-${exname}
+    SDL2::SDL2main
     SDL2::SDL2
     Vulkan::Vulkan
   )
