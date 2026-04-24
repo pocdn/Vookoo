@@ -38,24 +38,14 @@ function(example_sdl2 order exname)
     list(APPEND shaders "${exname}/${shader}")
   endforeach()
 
-  if(WIN32)
-    add_executable(${order}-${exname} WIN32
-      ${exname}/${exname}.cpp
-      ${shaders}
-      ../include/vku/vku.hpp
-      ../include/vku/vku_framework_sdl2.hpp
-    )
-  else()
-    add_executable(${order}-${exname}
-      ${exname}/${exname}.cpp
-      ${shaders}
-      ../include/vku/vku.hpp
-      ../include/vku/vku_framework_sdl2.hpp
-    )
-  endif()
+  add_executable(${order}-${exname}
+    ${exname}/${exname}.cpp
+    ${shaders}
+    ../include/vku/vku.hpp
+    ../include/vku/vku_framework_sdl2.hpp
+  )
 
   target_link_libraries(${order}-${exname}
-    SDL2::SDL2main
     SDL2::SDL2
     Vulkan::Vulkan
   )

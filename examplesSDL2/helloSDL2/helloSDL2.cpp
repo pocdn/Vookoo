@@ -8,6 +8,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+#define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 #include <vku/vku_framework_sdl2.hpp>
