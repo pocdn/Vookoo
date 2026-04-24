@@ -311,7 +311,7 @@ public:
 
   /// Set the default layers and extensions.
   InstanceMaker &defaultLayersExtensions() {
-    extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+    extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     #ifdef VKU_SURFACE
       extension(VKU_SURFACE);
     #endif
@@ -480,19 +480,26 @@ public:
 
   DebugCallback(
     vk::Instance instance,
-    vk::DebugReportFlagsEXT flags =
-      vk::DebugReportFlagBitsEXT::eWarning |
-      vk::DebugReportFlagBitsEXT::eError
+    vk::DebugUtilsMessageSeverityFlagsEXT severity =
+      vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+      vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
   ) : instance_(instance) {
-    auto ci = vk::DebugReportCallbackCreateInfoEXT{flags, &debugCallback};
+    auto ci = vk::DebugUtilsMessengerCreateInfoEXT{
+      {},
+      severity,
+      vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+      vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
+      vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
+      &debugCallback
+    };
 
-    auto vkCreateDebugReportCallbackEXT =
-        (PFN_vkCreateDebugReportCallbackEXT)instance_.getProcAddr(
-            "vkCreateDebugReportCallbackEXT");
+    auto vkCreateDebugUtilsMessengerEXT =
+        (PFN_vkCreateDebugUtilsMessengerEXT)instance_.getProcAddr(
+            "vkCreateDebugUtilsMessengerEXT");
 
-    VkDebugReportCallbackEXT cb;
-    vkCreateDebugReportCallbackEXT(
-      instance_, &(const VkDebugReportCallbackCreateInfoEXT &)ci,
+    VkDebugUtilsMessengerEXT cb;
+    vkCreateDebugUtilsMessengerEXT(
+      instance_, &(const VkDebugUtilsMessengerCreateInfoEXT &)ci,
       nullptr, &cb
     );
     callback_ = cb;
@@ -504,23 +511,23 @@ public:
 
   void reset() {
     if (callback_) {
-      auto vkDestroyDebugReportCallbackEXT =
-          (PFN_vkDestroyDebugReportCallbackEXT)instance_.getProcAddr(
-              "vkDestroyDebugReportCallbackEXT");
-      vkDestroyDebugReportCallbackEXT(instance_, callback_, nullptr);
-      callback_ = vk::DebugReportCallbackEXT{};
+      auto vkDestroyDebugUtilsMessengerEXT =
+          (PFN_vkDestroyDebugUtilsMessengerEXT)instance_.getProcAddr(
+              "vkDestroyDebugUtilsMessengerEXT");
+      vkDestroyDebugUtilsMessengerEXT(instance_, callback_, nullptr);
+      callback_ = vk::DebugUtilsMessengerEXT{};
     }
   }
 private:
-  // Report any errors or warnings.
   static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
-      VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objectType,
-      uint64_t object, size_t location, int32_t messageCode,
-      const char *pLayerPrefix, const char *pMessage, void *pUserData) {
-    printf("%08x debugCallback: %s\n", flags, pMessage);
+      VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+      VkDebugUtilsMessageTypeFlagsEXT messageTypes,
+      const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+      void *pUserData) {
+    printf("%08x debugCallback: %s\n", (uint32_t)messageSeverity, pCallbackData->pMessage);
     return VK_FALSE;
   }
-  vk::DebugReportCallbackEXT callback_;
+  vk::DebugUtilsMessengerEXT callback_;
   vk::Instance instance_;
 };
 

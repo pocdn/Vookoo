@@ -280,7 +280,7 @@ public:
   }
 
   void init(const vk::Instance &instance, const vk::Device &device, const vk::PhysicalDevice &physicalDevice, uint32_t graphicsQueueFamilyIndex, vk::SurfaceKHR surface, vk::Format desiredSwapChainFormat) {
-    surface_ = vk::UniqueSurfaceKHR(surface, vk::ObjectDestroy<vk::Instance, vk::DispatchLoaderStatic>(instance));
+    surface_ = vk::UniqueSurfaceKHR(surface, vk::ObjectDestroy<vk::Instance, VULKAN_HPP_DEFAULT_DISPATCHER_TYPE>(instance));
     graphicsQueueFamilyIndex_ = graphicsQueueFamilyIndex;
     physicalDevice_ = physicalDevice;
     instance_ = instance;
