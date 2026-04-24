@@ -255,7 +255,12 @@ public:
   }
 
   void init(const vk::Instance &instance, const vk::Device &device, const vk::PhysicalDevice &physicalDevice, uint32_t graphicsQueueFamilyIndex, vk::SurfaceKHR surface, vk::Format desiredSwapChainFormat) {
+    // ObjectDestroy moved from vk:: to vk::detail:: around SDK 1.3.283
+#if VK_HEADER_VERSION >= 290
+    surface_ = vk::UniqueSurfaceKHR(surface, vk::detail::ObjectDestroy<vk::Instance, VULKAN_HPP_DEFAULT_DISPATCHER_TYPE>(instance));
+#else
     surface_ = vk::UniqueSurfaceKHR(surface, vk::ObjectDestroy<vk::Instance, VULKAN_HPP_DEFAULT_DISPATCHER_TYPE>(instance));
+#endif
     graphicsQueueFamilyIndex_ = graphicsQueueFamilyIndex;
     physicalDevice_ = physicalDevice;
     instance_ = instance;

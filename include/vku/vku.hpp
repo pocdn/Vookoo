@@ -519,11 +519,20 @@ public:
     }
   }
 private:
+  // SDK >= 1.3.283 deprecated the raw-Vk-type PFN constructor; use vk-namespace types instead
+#if VK_HEADER_VERSION >= 290
+  static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+      vk::DebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+      vk::DebugUtilsMessageTypeFlagsEXT messageTypes,
+      const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData,
+      void *pUserData) {
+#else
   static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
       VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
       VkDebugUtilsMessageTypeFlagsEXT messageTypes,
       const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
       void *pUserData) {
+#endif
     printf("%08x debugCallback: %s\n", (uint32_t)messageSeverity, pCallbackData->pMessage);
     return VK_FALSE;
   }
