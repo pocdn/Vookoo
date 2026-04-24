@@ -451,7 +451,7 @@ public:
     {vk::Result result = device.waitForFences(rpcbFence, 1, umax);} // TODO use result
 
     vk::Semaphore iaSema = *imageAcquireSemaphore_[currentFrame];
-    auto acquired = device.acquireNextImageKHR(*swapchain_, umax, iaSema, VK_NULL_HANDLE, &imageIndex);
+    auto acquired = device.acquireNextImageKHR(*swapchain_, umax, iaSema, vk::Fence{}, &imageIndex);
     if (acquired == vk::Result::eErrorOutOfDateKHR) {
       recreateSwapChain();
       return;
