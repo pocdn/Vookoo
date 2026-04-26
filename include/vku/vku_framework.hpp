@@ -58,6 +58,8 @@ struct FrameworkOptions
 	bool useTessellationShader = false;
 	bool useGeometryShader = false;
 	bool useMultiView = false;
+	bool useDynamicRendering = false;
+	bool useSynchronization2 = false;
 };
 
 /// This class provides an optional interface to the vulkan instance, devices and queues.
@@ -78,7 +80,7 @@ public:
       .defaultLayersExtensions()
       .layer("VK_LAYER_KHRONOS_validation")
       //.extension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME) // added for multiview extension with vulkan 1.0.0
-      .apiVersion(VK_MAKE_VERSION(1,1,0))
+      .apiVersion(VK_MAKE_VERSION(1,3,0))
       .createUnique();
 
     callback_ = DebugCallback(*instance_);
@@ -131,9 +133,23 @@ public:
       .queue(graphicsQueueFamilyIndex_)
       .enableGeometryShader( options.useGeometryShader )
       .enableTessellationShader( options.useTessellationShader )
-      .enableMultiView( options.useMultiView );
+      .enableMultiView( options.useMultiView )
+      .enableDynamicRendering( options.useDynamicRendering )
+      .enableSynchronization2( options.useSynchronization2 );
     if (options.useCompute && computeQueueFamilyIndex_ != graphicsQueueFamilyIndex_) dm.queue(computeQueueFamilyIndex_);
-    device_ = dm.createUnique(physical_device_);
+
+    // NVIDIA ICD occasionally returns DeviceLost transiently at creation time.
+    // Retry with exponential backoff before propagating the error.
+    for (int attempt = 0; ; ++attempt) {
+      try {
+        device_ = dm.createUnique(physical_device_);
+        break;
+      } catch (const vk::DeviceLostError &) {
+        if (attempt >= 4) throw;
+        std::cout << "vkCreateDevice transient failure (attempt " << attempt+1 << "), retrying...\n";
+        std::this_thread::sleep_for(std::chrono::milliseconds(100 << attempt));
+      }
+    }
 
     vk::PipelineCacheCreateInfo pipelineCacheInfo{};
     pipelineCache_ = device_->createPipelineCacheUnique(pipelineCacheInfo);

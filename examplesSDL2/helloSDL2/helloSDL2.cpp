@@ -230,14 +230,21 @@ int main() {
         auto prevTime = std::chrono::high_resolution_clock::now();
         UBO uboCpu{};
 
-        bool running = true;
+        bool running   = true;
+        bool minimized = false;
         while (running) {
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
                 if (event.type == SDL_QUIT) { running = false; }
                 if (event.type == SDL_KEYDOWN &&
                     event.key.keysym.sym == SDLK_ESCAPE) { running = false; }
+                if (event.type == SDL_WINDOWEVENT) {
+                    if (event.window.event == SDL_WINDOWEVENT_MINIMIZED) { minimized = true;  }
+                    if (event.window.event == SDL_WINDOWEVENT_RESTORED)  { minimized = false; }
+                }
             }
+
+            if (minimized) { prevTime = std::chrono::high_resolution_clock::now(); SDL_Delay(16); continue; }
 
             window.draw(device, fw.graphicsQueue(),
                 [&](vk::CommandBuffer cb, int /*imageIndex*/, vk::RenderPassBeginInfo &rpbi) {

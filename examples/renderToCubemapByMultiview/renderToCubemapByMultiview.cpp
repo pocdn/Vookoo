@@ -278,15 +278,9 @@ int main() {
     // to be able to use gl_ViewIndex which is index 0,1...N-1 layers
     // see https://blog.anishbhobe.site/vulkan-render-to-cubemaps-using-multiview/
     //
-    // Additional requirements to use multiview:
-    // dm.extension(VK_KHR_MULTIVIEW_EXTENSION_NAME); must be added on line 110 of vku_framework.hpp
-    // im.extension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME); added on line 67 of vku_framework.hpp
-    // Next, need to pass vk::PhysicalDeviceMultiviewFeatures thru pNext chain of the Vk::DeviceCreateInfo
-    // vku::DeviceMaker::createUnique added following near line 427 of vku.hpp 
-    //   ...
-    //     vk::PhysicalDeviceMultiviewFeatures physicalDeviceMultiviewFeatures;
-    //     physicalDeviceMultiviewFeatures.setMultiview(true);
-    //     dci.pNext = &physicalDeviceMultiviewFeatures;
+    // Multiview is core in Vulkan 1.1 — no extensions needed.
+    // Enable via FrameworkOptions.useMultiView = true (see main()), which calls
+    // DeviceMaker::enableMultiView() to set VkPhysicalDeviceMultiviewFeatures in the pNext chain.
     
     //  Bit mask that specifies which view the rendering is broadcast to
     //  e.g. 0011 = Broadcast to first and second view (layer)

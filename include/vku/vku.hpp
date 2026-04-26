@@ -447,6 +447,18 @@ public:
 	  return *this;
   }
 
+  DeviceMaker &enableDynamicRendering(bool value) {
+    dynamicRenderingFeatures_.setDynamicRendering(value);
+    // Core in Vulkan 1.3 — no extension needed when targeting 1.3.
+    return *this;
+  }
+
+  DeviceMaker &enableSynchronization2(bool value) {
+    synchronization2Features_.setSynchronization2(value);
+    // Core in Vulkan 1.3 — no extension needed when targeting 1.3.
+    return *this;
+  }
+
   /// Create a new logical device.
   vk::UniqueDevice createUnique(vk::PhysicalDevice physical_device) {
     auto dci = vk::DeviceCreateInfo{
@@ -459,7 +471,16 @@ public:
     // see vk::PhysicalDeviceFeatures for things that can be enabled like geometry and tesselation shaders
     dci.setPEnabledFeatures(&physicalDeviceFeatures_);
 
-    // see vk::PhysicalDeviceMultiviewFeatures for options when enabling multiview
+    // Build pNext chain: multiview → sync2 → dynamic_rendering (each optional)
+    void **tail = reinterpret_cast<void **>(&physicalDeviceMultiviewFeatures_.pNext);
+    if (synchronization2Features_.synchronization2) {
+      *tail = &synchronization2Features_;
+      tail  = reinterpret_cast<void **>(&synchronization2Features_.pNext);
+    }
+    if (dynamicRenderingFeatures_.dynamicRendering) {
+      *tail = &dynamicRenderingFeatures_;
+      tail  = reinterpret_cast<void **>(&dynamicRenderingFeatures_.pNext);
+    }
     dci.pNext = &physicalDeviceMultiviewFeatures_;
 
     return physical_device.createDeviceUnique(dci);
@@ -471,6 +492,8 @@ private:
   std::vector<vk::DeviceQueueCreateInfo> qci_;
   vk::PhysicalDeviceFeatures physicalDeviceFeatures_;
   vk::PhysicalDeviceMultiviewFeatures physicalDeviceMultiviewFeatures_;
+  vk::PhysicalDeviceSynchronization2Features synchronization2Features_;
+  vk::PhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeatures_;
 };
 
 class DebugCallback {
@@ -962,6 +985,7 @@ public:
     pipelineInfo.pMultisampleState = &multisampleState_;
     pipelineInfo.pColorBlendState = &colorBlendState_;
     pipelineInfo.pDepthStencilState = &depthStencilState_;
+    pipelineInfo.pNext = pipelineNext_;
     pipelineInfo.layout = pipelineLayout;
     pipelineInfo.renderPass = renderPass;
     pipelineInfo.pDynamicState = dynamicState_.empty() ? nullptr : &dynState;
@@ -1152,6 +1176,30 @@ public:
   PipelineMaker &blendConstants(float r, float g, float b, float a) { float *bc = colorBlendState_.blendConstants; bc[0] = r; bc[1] = g; bc[2] = b; bc[3] = a; return *this; }
 
   PipelineMaker &dynamicState(vk::DynamicState value) { dynamicState_.push_back(value); return *this; }
+  PipelineMaker &pipelineNext(const void *p) { pipelineNext_ = p; return *this; }
+
+  // Dynamic rendering color/depth/stencil attachment formats.
+  // When any are set, the no-renderpass createUnique builds VkPipelineRenderingCreateInfo
+  // internally — no need to call pipelineNext() manually.
+  PipelineMaker &colorFormat(vk::Format fmt) { colorFormats_.push_back(fmt); return *this; }
+  PipelineMaker &depthFormat(vk::Format fmt) { renderingInfo_.depthAttachmentFormat = fmt; return *this; }
+  PipelineMaker &stencilFormat(vk::Format fmt) { renderingInfo_.stencilAttachmentFormat = fmt; return *this; }
+
+  // Create a pipeline for dynamic rendering (no VkRenderPass).
+  vk::UniquePipeline createUnique(const vk::Device &device,
+                            const vk::PipelineCache &pipelineCache,
+                            const vk::PipelineLayout &pipelineLayout, bool defaultBlend=true) {
+    if (!colorFormats_.empty() ||
+        renderingInfo_.depthAttachmentFormat   != vk::Format::eUndefined ||
+        renderingInfo_.stencilAttachmentFormat != vk::Format::eUndefined) {
+      renderingInfo_.colorAttachmentCount    = (uint32_t)colorFormats_.size();
+      renderingInfo_.pColorAttachmentFormats = colorFormats_.data();
+      renderingInfo_.pNext                   = pipelineNext_;
+      pipelineNext_ = &renderingInfo_;
+    }
+    return createUnique(device, pipelineCache, pipelineLayout, vk::RenderPass{}, defaultBlend);
+  }
+
 private:
   vk::PipelineInputAssemblyStateCreateInfo inputAssemblyState_;
   vk::Viewport viewport_;
@@ -1167,7 +1215,10 @@ private:
   std::vector<vk::VertexInputAttributeDescription> vertexAttributeDescriptions_;
   std::vector<vk::VertexInputBindingDescription> vertexBindingDescriptions_;
   std::vector<vk::DynamicState> dynamicState_;
+  std::vector<vk::Format> colorFormats_;
+  vk::PipelineRenderingCreateInfo renderingInfo_{};
   uint32_t subpass_ = 0;
+  const void *pipelineNext_ = nullptr;
 };
 
 template <typename iterator, typename sentinel>
@@ -2321,6 +2372,58 @@ public:
 
 private:
   vk::RenderPassBeginInfo renderPassBeginInfo_;
+};
+
+/// Set dynamic viewport and scissor to cover the full (w, h) extent in one call.
+inline void setViewportScissor(vk::CommandBuffer cb, uint32_t w, uint32_t h) {
+  cb.setViewport(0, vk::Viewport{0.f, 0.f, (float)w, (float)h, 0.f, 1.f});
+  cb.setScissor(0, vk::Rect2D{{0, 0}, {w, h}});
+}
+
+/// Builder for VkRenderingInfo used with dynamic rendering (vkCmdBeginRendering).
+/// Accumulates color attachments then issues beginRendering on the command buffer.
+class RenderingMaker {
+public:
+  RenderingMaker(uint32_t w, uint32_t h) {
+    info_.renderArea = vk::Rect2D{{0, 0}, {w, h}};
+    info_.layerCount = 1;
+  }
+
+  /// Write-only color attachment — no clear, just write every pixel.
+  RenderingMaker &colorAttachment(vk::ImageView view,
+                                  vk::ImageLayout layout = vk::ImageLayout::eColorAttachmentOptimal) {
+    vk::RenderingAttachmentInfo att{};
+    att.imageView   = view;
+    att.imageLayout = layout;
+    att.loadOp      = vk::AttachmentLoadOp::eDontCare;
+    att.storeOp     = vk::AttachmentStoreOp::eStore;
+    colorAtts_.push_back(att);
+    return *this;
+  }
+
+  /// Color attachment cleared to a solid RGBA color.
+  RenderingMaker &colorClear(vk::ImageView view,
+                             std::array<float, 4> rgba,
+                             vk::ImageLayout layout = vk::ImageLayout::eColorAttachmentOptimal) {
+    vk::RenderingAttachmentInfo att{};
+    att.imageView   = view;
+    att.imageLayout = layout;
+    att.loadOp      = vk::AttachmentLoadOp::eClear;
+    att.storeOp     = vk::AttachmentStoreOp::eStore;
+    att.clearValue  = vk::ClearValue{vk::ClearColorValue{rgba}};
+    colorAtts_.push_back(att);
+    return *this;
+  }
+
+  void beginRendering(vk::CommandBuffer cb) {
+    info_.colorAttachmentCount = (uint32_t)colorAtts_.size();
+    info_.pColorAttachments    = colorAtts_.data();
+    cb.beginRendering(info_);
+  }
+
+private:
+  vk::RenderingInfo info_{};
+  std::vector<vk::RenderingAttachmentInfo> colorAtts_;
 };
 
 } // namespace vku
