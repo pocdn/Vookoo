@@ -208,7 +208,7 @@ int main() {
                      VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
                      offscreen.image(), colorSRR},
                     {PS2::eColorAttachmentOutput, AC2::eColorAttachmentWrite,
-                     PS2::eNone, AC2::eNone,
+                     PS2::eBottomOfPipe, AC2::eNone,
                      vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
                      VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
                      window.images()[imageIndex], colorSRR}
