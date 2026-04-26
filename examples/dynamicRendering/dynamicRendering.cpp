@@ -45,15 +45,14 @@ int main() {
     static constexpr vk::Format offFmt = vk::Format::eR8G8B8A8Unorm;
     vku::ColorAttachmentImage offscreen{device, fw.memprops(), OW, OH, offFmt};
 
-    // Transition from eUndefined once so validation doesn't warn about the first barrier.
-    // (The first frame barrier already handles eUndefined→eColorAttachmentOptimal,
-    //  but doing an explicit initial transition is cleaner for tools.)
+    // Pre-transition offscreen to eColorAttachmentOptimal — the layout it will be in at the
+    // start of every frame, so no layout-transition write is needed at frame start.
     vku::executeImmediately(device, window.commandPool(), fw.graphicsQueue(), [&](vk::CommandBuffer cb) {
         const vk::ImageSubresourceRange colorSRR{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
         vk::ImageMemoryBarrier2 b{
             vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
             vk::PipelineStageFlagBits2::eNone, vk::AccessFlagBits2::eNone,
-            vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal,
+            vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
             VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
             offscreen.image(), colorSRR};
         cb.pipelineBarrier2(vk::DependencyInfo{}.setImageMemoryBarriers(b));
@@ -145,14 +144,27 @@ int main() {
                 using AC2 = vk::AccessFlagBits2;
                 const vk::ImageSubresourceRange colorSRR{vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1};
 
-                // ---- Barrier 1: offscreen eShaderReadOnly → eColorAttachmentOptimal ----
-                vk::ImageMemoryBarrier2 bOffWr{
+                // Cross-frame barrier: previous frame's post-pass fragment reads of the
+                // offscreen image must complete before this frame's scene-pass color writes.
+                // imageAvailableSemaphore only gates eColorAttachmentOutput and does not
+                // create a happens-before with the prior frame's eFragmentShader reads.
+                vk::MemoryBarrier2 crossFrame{
                     PS2::eFragmentShader, AC2::eShaderRead,
+                    PS2::eColorAttachmentOutput, AC2::eColorAttachmentWrite};
+                cb.pipelineBarrier2(vk::DependencyInfo{}.setMemoryBarriers(crossFrame));
+
+                // ---- Barrier 1: swapchain eUndefined → eColorAttachmentOptimal ----
+                // srcStage = eColorAttachmentOutput (not eNone) so the layout-transition write
+                // is chained after the imageAvailableSemaphore's waitDstStageMask stage.
+                // With srcStage = eNone the write can start before the semaphore fires, racing
+                // the present engine's read (SYNC_PRESENT_ENGINE_SYNCVAL_PRESENT_ACQUIRE_READ).
+                vk::ImageMemoryBarrier2 bSwap{
+                    PS2::eColorAttachmentOutput, AC2::eNone,
                     PS2::eColorAttachmentOutput, AC2::eColorAttachmentWrite,
-                    vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eColorAttachmentOptimal,
+                    vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
                     VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
-                    offscreen.image(), colorSRR};
-                cb.pipelineBarrier2(vk::DependencyInfo{}.setImageMemoryBarriers(bOffWr));
+                    window.images()[imageIndex], colorSRR};
+                cb.pipelineBarrier2(vk::DependencyInfo{}.setImageMemoryBarriers(bSwap));
 
                 // ---- Scene pass: rotating triangle → offscreen ----
                 vku::RenderingMaker{OW, OH}
@@ -165,20 +177,14 @@ int main() {
                 cb.draw(3, 1, 0, 0);
                 cb.endRendering();
 
-                // ---- Barrier 2: offscreen→shaderRead, swapchain eUndefined→colorAttachment ----
-                std::array<vk::ImageMemoryBarrier2, 2> b2{{
-                    {PS2::eColorAttachmentOutput, AC2::eColorAttachmentWrite,
-                     PS2::eFragmentShader, AC2::eShaderRead,
-                     vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
-                     VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
-                     offscreen.image(), colorSRR},
-                    {PS2::eNone, AC2::eNone,
-                     PS2::eColorAttachmentOutput, AC2::eColorAttachmentWrite,
-                     vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
-                     VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
-                     window.images()[imageIndex], colorSRR}
-                }};
-                cb.pipelineBarrier2(vk::DependencyInfo{}.setImageMemoryBarriers(b2));
+                // ---- Barrier 2: offscreen eColorAttachmentOptimal → eShaderReadOnlyOptimal ----
+                vk::ImageMemoryBarrier2 bOffRd{
+                    PS2::eColorAttachmentOutput, AC2::eColorAttachmentWrite,
+                    PS2::eFragmentShader, AC2::eShaderRead,
+                    vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+                    VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
+                    offscreen.image(), colorSRR};
+                cb.pipelineBarrier2(vk::DependencyInfo{}.setImageMemoryBarriers(bOffRd));
 
                 // ---- Post pass: grayscale offscreen → swapchain ----
                 vku::RenderingMaker{window.width(), window.height()}
@@ -191,14 +197,23 @@ int main() {
                 cb.draw(3, 1, 0, 0);
                 cb.endRendering();
 
-                // ---- Barrier 3: swapchain eColorAttachmentOptimal → ePresentSrcKHR ----
-                vk::ImageMemoryBarrier2 bPresent{
-                    PS2::eColorAttachmentOutput, AC2::eColorAttachmentWrite,
-                    PS2::eNone, AC2::eNone,
-                    vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
-                    VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
-                    window.images()[imageIndex], colorSRR};
-                cb.pipelineBarrier2(vk::DependencyInfo{}.setImageMemoryBarriers(bPresent));
+                // ---- Barrier 3: offscreen → ready for next frame, swapchain → present ----
+                // Moving the offscreen transition here (after its read, within this CB) avoids a
+                // cross-submission WAR: the next frame starts with offscreen already in
+                // eColorAttachmentOptimal and needs no layout-transition write at frame start.
+                std::array<vk::ImageMemoryBarrier2, 2> b3{{
+                    {PS2::eFragmentShader, AC2::eShaderRead,
+                     PS2::eColorAttachmentOutput, AC2::eColorAttachmentWrite,
+                     vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eColorAttachmentOptimal,
+                     VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
+                     offscreen.image(), colorSRR},
+                    {PS2::eColorAttachmentOutput, AC2::eColorAttachmentWrite,
+                     PS2::eNone, AC2::eNone,
+                     vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
+                     VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
+                     window.images()[imageIndex], colorSRR}
+                }};
+                cb.pipelineBarrier2(vk::DependencyInfo{}.setImageMemoryBarriers(b3));
 
                 cb.end();
             }

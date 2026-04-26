@@ -242,6 +242,18 @@ int main() {
                 ComputeUniform uniform{ .iFrame = iFrame };
                 cb.begin(vk::CommandBufferBeginInfo{});
 
+                // Cross-frame barrier: on a single queue a barrier's src scope covers all
+                // previously-submitted work, so this serialises the shared ping-pong images
+                // between consecutive in-flight frames (WAR and RAW cross-submission hazards).
+                vk::MemoryBarrier crossFrame{
+                    vk::AccessFlagBits::eShaderWrite,
+                    vk::AccessFlagBits::eShaderWrite | vk::AccessFlagBits::eShaderRead
+                };
+                cb.pipelineBarrier(
+                    vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eComputeShader,
+                    vk::PipelineStageFlagBits::eComputeShader,
+                    {}, crossFrame, {}, {});
+
                 // Update UBO
                 ubo.barrier(cb,
                     vk::PipelineStageFlagBits::eComputeShader,
