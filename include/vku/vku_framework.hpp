@@ -505,10 +505,14 @@ public:
     // Submit 1: dynamic CB (UBO transfers). Waits for image acquire only at
     // eColorAttachmentOutput — the dynamic CB doesn't write to the swapchain image.
     vk::PipelineStageFlags waitStagesAcquire = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-    // Submit 2: static CB (rendering). Waits for dynamic CB at eVertexShader so that
-    // UBO writes from cb.updateBuffer are visible before vertex shader reads them.
-    // eColorAttachmentOutput alone would not cover vertex shader.
-    vk::PipelineStageFlags waitStagesDynamic = vk::PipelineStageFlagBits::eVertexShader;
+    // Submit 2: static CB (rendering). Waits for dynamic CB at eTopOfPipe — the very first stage.
+    // This forces ALL stages in submit2 to wait for psSema without adding any access-mask
+    // dependency (which would conflict with existing barriers). Semaphore signal/wait already
+    // provides a full memory dependency (all prior writes visible), so UBO data written via
+    // cb.updateBuffer in submit1 is visible to vertex shader reads in submit2. Using eTopOfPipe
+    // also makes the ccSema→psSema→submit1 chain fully visible to sync-val, fixing
+    // SYNC-HAZARD-PRESENT-AFTER-WRITE when submit1 contains swapchain color writes.
+    vk::PipelineStageFlags waitStagesDynamic = vk::PipelineStageFlagBits::eTopOfPipe;
 
     vk::SubmitInfo submit;
     submit.waitSemaphoreCount = 1;
