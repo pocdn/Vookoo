@@ -52,3 +52,4 @@ function(example_sdl2 order exname)
 endfunction()
 
 example_sdl2(01 helloSDL2 helloSDL2.vert helloSDL2.frag helloSDL2.comp)
+example_sdl2(02 MSAA MSAA.vert MSAA.frag)

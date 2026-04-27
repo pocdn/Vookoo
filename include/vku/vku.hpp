@@ -626,6 +626,20 @@ public:
     return *this;
   }
 
+  /// Set the resolve attachment for the most recent colour attachment.
+  /// pResolveAttachments must parallel pColorAttachments (one entry per colour attachment).
+  /// Call once per subpassColorAttachment, immediately after it.
+  RenderpassMaker& subpassResolveAttachment(vk::ImageLayout layout, uint32_t attachment) {
+    vk::SubpassDescription &subpass = s.subpassDescriptions.back();
+    auto *p = getAttachmentReference();
+    p->layout = layout;
+    p->attachment = attachment;
+    if (subpass.pResolveAttachments == nullptr) {
+      subpass.pResolveAttachments = p;
+    }
+    return *this;
+  }
+
   RenderpassMaker& subpassInputAttachment(vk::ImageLayout layout, uint32_t attachment) {
     vk::SubpassDescription &subpass = s.subpassDescriptions.back();
     auto *p = getAttachmentReference();
@@ -2003,6 +2017,36 @@ public:
     info.initialLayout = vk::ImageLayout::eUndefined;
     typedef vk::ImageAspectFlagBits iafb;
     create(device, memprops, info, vk::ImageViewType::e2D, iafb::eColor, false);
+  }
+private:
+};
+
+/// A multisample (MSAA) colour attachment image.
+/// Always paired with a resolve attachment in the render pass — storeOp should
+/// be eDontCare on this image since the resolved output is what gets presented.
+class MsaaImage : public GenericImage {
+public:
+  MsaaImage() {}
+
+  MsaaImage(vk::Device device, const vk::PhysicalDeviceMemoryProperties &memprops,
+            uint32_t width, uint32_t height, vk::Format format,
+            vk::SampleCountFlagBits samples) {
+    vk::ImageCreateInfo info;
+    info.imageType    = vk::ImageType::e2D;
+    info.format       = format;
+    info.extent       = vk::Extent3D{width, height, 1u};
+    info.mipLevels    = 1;
+    info.arrayLayers  = 1;
+    info.samples      = samples;
+    info.tiling       = vk::ImageTiling::eOptimal;
+    // eTransientAttachment: contents need not survive the render pass — allows lazy allocation
+    // on tile-based GPUs (no bandwidth cost for storing the MSAA buffer).
+    info.usage        = vk::ImageUsageFlagBits::eColorAttachment |
+                        vk::ImageUsageFlagBits::eTransientAttachment;
+    info.sharingMode  = vk::SharingMode::eExclusive;
+    info.initialLayout = vk::ImageLayout::eUndefined;
+    create(device, memprops, info, vk::ImageViewType::e2D,
+           vk::ImageAspectFlagBits::eColor, false);
   }
 private:
 };
