@@ -53,3 +53,12 @@ endfunction()
 
 example_sdl2(01 helloSDL2 helloSDL2.vert helloSDL2.frag helloSDL2.comp)
 example_sdl2(02 MSAA MSAA.vert MSAA.frag)
+example_sdl2(03 noisedemo
+  noisedemo.vert
+  noisedemo.frag
+  noisedemo_s2d.frag
+  noisedemo_s4d.frag
+  noisedemo_c2d.frag
+  noisedemo_c3d.frag
+  noisedemo_c4d.frag
+)

@@ -1,6 +1,4 @@
-build/
-build_examples/
-build_sdl2/
+build*/
 *~
 *.swp
 
