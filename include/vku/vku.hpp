@@ -1936,6 +1936,38 @@ public:
 private:
 };
 
+/// A 3D texture / storage image living on the GPU.
+/// Suitable for compute storage images (eStorage) and sampler3D reads (eSampled).
+class TextureImage3D : public GenericImage {
+public:
+  TextureImage3D() {}
+
+  TextureImage3D(vk::Device device, const vk::PhysicalDeviceMemoryProperties &memprops,
+                 uint32_t width, uint32_t height, uint32_t depth,
+                 uint32_t mipLevels = 1,
+                 vk::Format format = vk::Format::eR8G8B8A8Unorm) {
+    vk::ImageCreateInfo info;
+    info.flags             = {};
+    info.imageType         = vk::ImageType::e3D;
+    info.format            = format;
+    info.extent            = vk::Extent3D{width, height, depth};
+    info.mipLevels         = mipLevels;
+    info.arrayLayers       = 1;
+    info.samples           = vk::SampleCountFlagBits::e1;
+    info.tiling            = vk::ImageTiling::eOptimal;
+    info.usage             = vk::ImageUsageFlagBits::eSampled
+                           | vk::ImageUsageFlagBits::eTransferSrc
+                           | vk::ImageUsageFlagBits::eTransferDst
+                           | vk::ImageUsageFlagBits::eStorage;
+    info.sharingMode       = vk::SharingMode::eExclusive;
+    info.queueFamilyIndexCount = 0;
+    info.pQueueFamilyIndices   = nullptr;
+    info.initialLayout     = vk::ImageLayout::eUndefined;
+    create(device, memprops, info, vk::ImageViewType::e3D, vk::ImageAspectFlagBits::eColor, false);
+  }
+private:
+};
+
 /// A cube map texture image living on the GPU or a staging buffer visible to the CPU.
 class TextureImageCube : public GenericImage {
 public:

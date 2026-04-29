@@ -62,3 +62,12 @@ example_sdl2(03 noisedemo
   noisedemo_c3d.frag
   noisedemo_c4d.frag
 )
+example_sdl2(04 fluid3D
+  fluid_advect.comp
+  fluid_forces.comp
+  fluid_divg.comp
+  fluid_jacobi.comp
+  fluid_grad.comp
+  fluid_display.vert
+  fluid_display.frag
+)
