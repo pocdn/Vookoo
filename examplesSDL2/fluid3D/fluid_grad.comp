@@ -4,10 +4,10 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 // Subtract the pressure gradient from velocity (6-neighbour, 3D).
 // Also copies temperature unchanged so both stateA and stateB share parity.
 layout(binding = 0, rgba16f) uniform readonly image3D in0;   // stateAIn (vel.xyz, dens)
-layout(binding = 1, rgba16f) uniform readonly image3D in1;   // stateBIn (temp, ...)
-layout(binding = 2, rgba16f) uniform readonly image3D in2;   // presIn
+layout(binding = 1, r16f)   uniform readonly image3D in1;   // stateBIn (temp)
+layout(binding = 2, r16f)   uniform readonly image3D in2;   // presIn
 layout(binding = 3, rgba16f) uniform          image3D out0;  // stateAOut (vel corrected, dens)
-layout(binding = 4, rgba16f) uniform          image3D out1;  // stateBOut (temp copied)
+layout(binding = 4, r16f)   uniform          image3D out1;  // stateBOut (temp copied)
 
 layout(binding = 5) uniform FluidUBO {
     float dt;         float cellSize;   float velDiss;  float densDiss;
