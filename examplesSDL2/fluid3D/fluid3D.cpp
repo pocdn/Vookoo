@@ -521,7 +521,6 @@ int main() {
 
         static constexpr int BENCH_FRAMES = 100;
         int  benchFrame = 0;
-        device.waitIdle();
         auto tBench = std::chrono::steady_clock::now();
 
         while (running) {
@@ -699,7 +698,6 @@ int main() {
             p = 1 - p;
 
             if (++benchFrame == BENCH_FRAMES) {
-                device.waitIdle();
                 auto ms = std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - tBench).count();
                 fprintf(stderr, "%d frames: %.2f ms/frame  (%.1f fps)\n",

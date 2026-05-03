@@ -7,35 +7,48 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include_directories(${PROJECT_SOURCE_DIR}/../external)
 include_directories(${PROJECT_SOURCE_DIR}/../include)
 
-add_definitions(-DSOURCE_DIR="${CMAKE_SOURCE_DIR}/")
 add_definitions(-DBINARY_DIR="${PROJECT_BINARY_DIR}/")
 
 find_package(Vulkan REQUIRED)
 find_package(SDL2  REQUIRED)
 
-find_program(GLSLANG glslangValidator)
-find_program(GLSLC   glslc)
+find_program(GLSLC glslc REQUIRED)
 
+# example_sdl2(order name
+#   [SHADERS shader...]
+#   [DATA    file...]
+#   [GLSLC_DEPENDS file...]
+# )
+# SHADERS:      compiled with glslc; .spv lands in PROJECT_BINARY_DIR.
+#               The example's own source dir is always on the glslc include path.
+# DATA:         copied as-is into PROJECT_BINARY_DIR at configure time.
+# GLSLC_DEPENDS: extra files (relative to the example dir) that trigger shader recompilation.
 function(example_sdl2 order exname)
+  cmake_parse_arguments(ARG "" "" "SHADERS;DATA;GLSLC_DEPENDS" ${ARGN})
   set(shaders "")
+  set(depends "")
+  foreach(dep ${ARG_GLSLC_DEPENDS})
+    list(APPEND depends "${PROJECT_SOURCE_DIR}/${exname}/${dep}")
+  endforeach()
 
-  foreach(shader ${ARGN})
-    if(GLSLC)
-      add_custom_command(
-        OUTPUT  ${shader}.spv
-        COMMAND ${GLSLC} ${PROJECT_SOURCE_DIR}/${exname}/${shader} -o ${PROJECT_BINARY_DIR}/${shader}.spv
-        MAIN_DEPENDENCY ${exname}/${shader}
-      )
-    elseif(GLSLANG)
-      add_custom_command(
-        OUTPUT  ${shader}.spv
-        COMMAND ${GLSLANG} -V ${PROJECT_SOURCE_DIR}/${exname}/${shader} -o ${PROJECT_BINARY_DIR}/${shader}.spv
-        MAIN_DEPENDENCY ${exname}/${shader}
-      )
-    else()
-      message(WARNING "No GLSL compiler found — ${shader} will not be compiled")
-    endif()
+  foreach(shader ${ARG_SHADERS})
+    add_custom_command(
+      OUTPUT  ${shader}.spv
+      COMMAND ${GLSLC} -I ${PROJECT_SOURCE_DIR}/${exname}
+        ${PROJECT_SOURCE_DIR}/${exname}/${shader}
+        -o ${PROJECT_BINARY_DIR}/${shader}.spv
+      MAIN_DEPENDENCY ${exname}/${shader}
+      DEPENDS ${depends}
+    )
     list(APPEND shaders "${exname}/${shader}")
+  endforeach()
+
+  foreach(datafile ${ARG_DATA})
+    configure_file(
+      ${PROJECT_SOURCE_DIR}/${exname}/${datafile}
+      ${PROJECT_BINARY_DIR}/${datafile}
+      COPYONLY
+    )
   endforeach()
 
   add_executable(${order}-${exname}
@@ -51,23 +64,50 @@ function(example_sdl2 order exname)
   )
 endfunction()
 
-example_sdl2(01 helloSDL2 helloSDL2.vert helloSDL2.frag helloSDL2.comp)
-example_sdl2(02 MSAA MSAA.vert MSAA.frag)
+example_sdl2(01 helloSDL2
+  SHADERS helloSDL2.vert helloSDL2.frag helloSDL2.comp
+)
+example_sdl2(02 MSAA
+  SHADERS MSAA.vert MSAA.frag
+)
 example_sdl2(03 noisedemo
-  noisedemo.vert
-  noisedemo.frag
-  noisedemo_s2d.frag
-  noisedemo_s4d.frag
-  noisedemo_c2d.frag
-  noisedemo_c3d.frag
-  noisedemo_c4d.frag
+  SHADERS
+    noisedemo.vert
+    noisedemo.frag
+    noisedemo_s2d.frag
+    noisedemo_s4d.frag
+    noisedemo_c2d.frag
+    noisedemo_c3d.frag
+    noisedemo_c4d.frag
 )
 example_sdl2(04 fluid3D
-  fluid_advect.comp
-  fluid_forces.comp
-  fluid_divg.comp
-  fluid_jacobi.comp
-  fluid_grad.comp
-  fluid_display.vert
-  fluid_display.frag
+  SHADERS
+    fluid_advect.comp
+    fluid_forces.comp
+    fluid_divg.comp
+    fluid_jacobi.comp
+    fluid_grad.comp
+    fluid_display.vert
+    fluid_display.frag
+)
+example_sdl2(05 PrecomputedAtmosphericScattering2008
+  DATA earth.png
+  SHADERS
+    quad.vert
+    earth.vert
+    transmittance.frag
+    irradiance1.frag
+    inscatter1.frag
+    copyIrradiance.frag
+    copyInscatter1.frag
+    inscatterS.frag
+    irradianceN.frag
+    inscatterN.frag
+    copyInscatterN.frag
+    earth.frag
+)
+example_sdl2(06 PrecomputedAtmosphericScattering2017
+  SHADERS scene.vert scene.frag
+  DATA transmittance.dat scattering.dat irradiance.dat
+  GLSLC_DEPENDS definitions.glsl functions.glsl
 )
