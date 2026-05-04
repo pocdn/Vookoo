@@ -1,3 +1,4 @@
+#define VKU_GLFW
 #include <vku/vku_framework.hpp>
 #include <gilgamesh/mesh.hpp>
 #include <gilgamesh/shapes/teapot.hpp>

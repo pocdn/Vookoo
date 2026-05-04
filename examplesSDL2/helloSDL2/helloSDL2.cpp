@@ -8,10 +8,8 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#define SDL_MAIN_HANDLED
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
-#include <vku/vku_framework_sdl2.hpp>
+#define VKU_SDL2
+#include <vku/vku_framework.hpp>
 #include <vku/vku.hpp>
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
@@ -61,17 +59,10 @@ int main() {
 
         vk::Device device = fw.device();
 
-        // SDL2 creates the Vulkan surface; vku::Window takes ownership.
-        VkSurfaceKHR rawSurface;
-        if (!SDL_Vulkan_CreateSurface(sdlWindow, fw.instance(), &rawSurface)) {
-            std::cerr << "SDL_Vulkan_CreateSurface failed: " << SDL_GetError() << "\n";
-            return 1;
-        }
-
         vku::Window window(
             fw.instance(), device, fw.physicalDevice(),
             fw.graphicsQueueFamilyIndex(),
-            vk::SurfaceKHR(rawSurface),
+            sdlWindow,
             { .desiredPresentMode = vk::PresentModeKHR::eImmediate }
         );
         if (!window.ok()) {

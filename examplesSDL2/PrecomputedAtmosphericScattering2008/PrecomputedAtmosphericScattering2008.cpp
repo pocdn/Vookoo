@@ -16,10 +16,8 @@
 //   +/-                 — exposure
 //   Escape              — quit
 
-#define SDL_MAIN_HANDLED
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
-#include <vku/vku_framework_sdl2.hpp>
+#define VKU_SDL2
+#include <vku/vku_framework.hpp>
 #include <vku/vku.hpp>
 
 #define GLM_FORCE_RADIANS
@@ -348,14 +346,9 @@ int main() {
         const auto &mp    = fw.memprops();
         auto pCache       = fw.pipelineCache();
 
-        VkSurfaceKHR rawSurf{};
-        if (!SDL_Vulkan_CreateSurface(sdlWin, fw.instance(), &rawSurf)) {
-            fprintf(stderr, "SDL_Vulkan_CreateSurface: %s\n", SDL_GetError()); return 1;
-        }
-
         vku::Window window(fw.instance(), dev, fw.physicalDevice(),
                            fw.graphicsQueueFamilyIndex(),
-                           vk::SurfaceKHR(rawSurf));
+                           sdlWin);
         if (!window.ok()) { fputs("Window creation failed\n", stderr); return 1; }
         window.clearColorValue() = {0.0f, 0.0f, 0.0f, 1.0f};
 

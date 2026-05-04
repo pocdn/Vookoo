@@ -42,10 +42,8 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-#define SDL_MAIN_HANDLED
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
-#include <vku/vku_framework_sdl2.hpp>
+#define VKU_SDL2
+#include <vku/vku_framework.hpp>
 #include <vku/vku.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -126,15 +124,10 @@ int main() {
 
         vk::Device device = fw.device();
 
-        VkSurfaceKHR rawSurface{};
-        if (!SDL_Vulkan_CreateSurface(sdlWin, fw.instance(), &rawSurface)) {
-            fprintf(stderr, "SDL_Vulkan_CreateSurface: %s\n", SDL_GetError()); return 1;
-        }
-
         vku::Window window(
             fw.instance(), device, fw.physicalDevice(),
             fw.graphicsQueueFamilyIndex(),
-            vk::SurfaceKHR(rawSurface),
+            sdlWin,
             { .desiredPresentMode = vk::PresentModeKHR::eImmediate }
         );
         if (!window.ok()) { fputs("Window creation failed\n", stderr); return 1; }

@@ -12,6 +12,7 @@
 
 // Include the demo framework, vookoo (vku) for building objects and glm for maths.
 // The demo framework uses GLFW to create windows.
+#define VKU_GLFW
 #include <vku/vku_framework.hpp>
 #include <glm/glm.hpp>
 #include <glm/ext.hpp> // for rotate()

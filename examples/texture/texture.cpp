@@ -1,3 +1,4 @@
+#define VKU_GLFW
 #include <vku/vku_framework.hpp>
 #include <glm/glm.hpp>
 

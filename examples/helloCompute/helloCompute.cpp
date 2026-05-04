@@ -6,9 +6,9 @@
 // which is a layer to make creating Vulkan resources easy.
 //
 
-#define VKU_NO_GLFW
-#include <vku/vku.hpp>
+#define VKU_NO_WINDOW
 #include <vku/vku_framework.hpp>
+#include <vku/vku.hpp>
 #include <algorithm>
 
 int main() {

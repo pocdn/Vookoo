@@ -6,6 +6,7 @@
 // which is a layer to make creating Vulkan resources easy.
 //
 
+#define VKU_GLFW
 #include <vku/vku_framework.hpp>
 #include <vku/vku.hpp>
 #include <glm/glm.hpp>

@@ -22,10 +22,8 @@
 //   1–9                 — preset views
 //   Escape / Q          — quit
 
-#define SDL_MAIN_HANDLED
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
-#include <vku/vku_framework_sdl2.hpp>
+#define VKU_SDL2
+#include <vku/vku_framework.hpp>
 #include <vku/vku.hpp>
 
 #define GLM_FORCE_RADIANS
@@ -206,12 +204,8 @@ int main() {
         const auto           &mp     = fw.memprops();
         vk::PipelineCache     pCache = fw.pipelineCache();
 
-        VkSurfaceKHR rawSurf{};
-        if (!SDL_Vulkan_CreateSurface(sdlWin, fw.instance(), &rawSurf)) {
-            fprintf(stderr, "SDL_Vulkan_CreateSurface: %s\n", SDL_GetError()); return 1;
-        }
         vku::Window window(fw.instance(), dev, fw.physicalDevice(),
-                           fw.graphicsQueueFamilyIndex(), vk::SurfaceKHR(rawSurf));
+                           fw.graphicsQueueFamilyIndex(), sdlWin);
         if (!window.ok()) { fprintf(stderr, "Window creation failed\n"); return 1; }
 
         vk::CommandPool cmdPool = window.commandPool();

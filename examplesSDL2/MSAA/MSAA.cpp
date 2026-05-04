@@ -12,10 +12,8 @@
 // Both render passes and pipelines are built once at startup; toggling just
 // switches which set is active for the current frame.
 
-#define SDL_MAIN_HANDLED
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_vulkan.h>
-#include <vku/vku_framework_sdl2.hpp>
+#define VKU_SDL2
+#include <vku/vku_framework.hpp>
 #include <vku/vku.hpp>
 #define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
@@ -47,16 +45,10 @@ int main() {
 
         vk::Device device = fw.device();
 
-        VkSurfaceKHR rawSurface;
-        if (!SDL_Vulkan_CreateSurface(sdlWindow, fw.instance(), &rawSurface)) {
-            std::cerr << "SDL_Vulkan_CreateSurface failed: " << SDL_GetError() << "\n";
-            return 1;
-        }
-
         vku::Window window(
             fw.instance(), device, fw.physicalDevice(),
             fw.graphicsQueueFamilyIndex(),
-            vk::SurfaceKHR(rawSurface),
+            sdlWindow,
             { .desiredPresentMode = vk::PresentModeKHR::eFifo }
         );
         if (!window.ok()) { std::cerr << "Window creation failed\n"; return 1; }

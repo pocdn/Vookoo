@@ -1,3 +1,4 @@
+#define VKU_GLFW
 #include <vku/vku_framework.hpp>
 #include <vku/vku.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
