@@ -2157,15 +2157,64 @@ private:
   State s;
 };
 
-/// KTX files use OpenGL format values. This converts some common ones to Vulkan equivalents.
-inline vk::Format GLtoVKFormat(uint32_t glFormat) {
+/// KTX1 format resolution. For uncompressed textures glType+glFormat determine the format;
+/// for compressed textures glType==0 and glInternalFormat is authoritative.
+inline vk::Format GLtoVKFormat(uint32_t glType, uint32_t glFormat, uint32_t glInternalFormat) {
+  if (glType == 0) {
+    switch (glInternalFormat) {
+      case 0x83F0: return vk::Format::eBc1RgbUnormBlock;   // GL_COMPRESSED_RGB_S3TC_DXT1_EXT
+      case 0x83F1: return vk::Format::eBc1RgbaUnormBlock;  // GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
+      case 0x83F2: return vk::Format::eBc2UnormBlock;      // GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
+      case 0x83F3: return vk::Format::eBc3UnormBlock;      // GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+    }
+    return vk::Format::eUndefined;
+  }
   switch (glFormat) {
-    case 0x1907: return vk::Format::eR8G8B8Unorm; // GL_RGB
-    case 0x1908: return vk::Format::eR8G8B8A8Unorm; // GL_RGBA
-    case 0x83F0: return vk::Format::eBc1RgbUnormBlock; // GL_COMPRESSED_RGB_S3TC_DXT1_EXT
-    case 0x83F1: return vk::Format::eBc1RgbaUnormBlock; // GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
-    case 0x83F2: return vk::Format::eBc3UnormBlock; // GL_COMPRESSED_RGBA_S3TC_DXT3_EXT
-    case 0x83F3: return vk::Format::eBc5UnormBlock; // GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+    case 0x1903: // GL_RED
+      switch (glType) {
+        case 0x1400: return vk::Format::eR8Snorm;      // GL_BYTE
+        case 0x1401: return vk::Format::eR8Unorm;      // GL_UNSIGNED_BYTE
+        case 0x1402: return vk::Format::eR16Snorm;     // GL_SHORT
+        case 0x1403: return vk::Format::eR16Unorm;     // GL_UNSIGNED_SHORT
+        case 0x140B: return vk::Format::eR16Sfloat;    // GL_HALF_FLOAT
+        case 0x1406: return vk::Format::eR32Sfloat;    // GL_FLOAT
+      }
+      break;
+    case 0x8227: // GL_RG
+      switch (glType) {
+        case 0x1400: return vk::Format::eR8G8Snorm;    // GL_BYTE
+        case 0x1401: return vk::Format::eR8G8Unorm;    // GL_UNSIGNED_BYTE
+        case 0x1402: return vk::Format::eR16G16Snorm;  // GL_SHORT
+        case 0x1403: return vk::Format::eR16G16Unorm;  // GL_UNSIGNED_SHORT
+        case 0x140B: return vk::Format::eR16G16Sfloat; // GL_HALF_FLOAT
+        case 0x1406: return vk::Format::eR32G32Sfloat; // GL_FLOAT
+      }
+      break;
+    case 0x1907: // GL_RGB
+      switch (glType) {
+        case 0x1400: return vk::Format::eR8G8B8Snorm;      // GL_BYTE
+        case 0x1401: return vk::Format::eR8G8B8Unorm;      // GL_UNSIGNED_BYTE
+        case 0x1402: return vk::Format::eR16G16B16Snorm;   // GL_SHORT
+        case 0x1403: return vk::Format::eR16G16B16Unorm;   // GL_UNSIGNED_SHORT
+        case 0x140B: return vk::Format::eR16G16B16Sfloat;  // GL_HALF_FLOAT
+        case 0x1406: return vk::Format::eR32G32B32Sfloat;  // GL_FLOAT
+      }
+      break;
+    case 0x1908: // GL_RGBA
+      switch (glType) {
+        case 0x1400: return vk::Format::eR8G8B8A8Snorm;        // GL_BYTE
+        case 0x1401: return vk::Format::eR8G8B8A8Unorm;        // GL_UNSIGNED_BYTE
+        case 0x1402: return vk::Format::eR16G16B16A16Snorm;    // GL_SHORT
+        case 0x1403: return vk::Format::eR16G16B16A16Unorm;    // GL_UNSIGNED_SHORT
+        case 0x140B: return vk::Format::eR16G16B16A16Sfloat;   // GL_HALF_FLOAT
+        case 0x1406: return vk::Format::eR32G32B32A32Sfloat;   // GL_FLOAT
+      }
+      break;
+    case 0x80E1: // GL_BGRA
+      switch (glType) {
+        case 0x1401: return vk::Format::eB8G8R8A8Unorm;        // GL_UNSIGNED_BYTE
+      }
+      break;
   }
   return vk::Format::eUndefined;
 }
@@ -2211,7 +2260,7 @@ public:
     header.numberOfMipmapLevels = std::max(1U, header.numberOfMipmapLevels);
     header.pixelDepth = std::max(1U, header.pixelDepth);
 
-    format_ = GLtoVKFormat(header.glFormat);
+    format_ = GLtoVKFormat(header.glType, header.glFormat, header.glInternalFormat);
     if (format_ == vk::Format::eUndefined) return;
 
     p += sizeof(Header);

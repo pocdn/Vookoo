@@ -42,10 +42,6 @@
 
 static constexpr uint32_t WIN_W = 1024, WIN_H = 768;
 
-static constexpr uint32_t TRANS_W = 256, TRANS_H = 64;
-static constexpr uint32_t SCAT_W  = 256, SCAT_H = 128, SCAT_D = 32;
-static constexpr uint32_t IRR_W   = 64,  IRR_H  = 16;
-
 static constexpr float kLengthUnitInMeters = 1000.0f;
 static constexpr float kSunAngularRadius   = 0.00935f / 2.0f;
 static constexpr float kFovY               = 50.0f * float(M_PI) / 180.0f;
@@ -174,15 +170,6 @@ static std::vector<uint8_t> readFile(const std::string &path) {
     return {std::istreambuf_iterator<char>(f), {}};
 }
 
-static std::vector<uint32_t> readSpv(const std::string &path) {
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
-    if (!f) throw std::runtime_error("cannot open SPIR-V: " + path);
-    auto size = f.tellg(); f.seekg(0);
-    std::vector<uint32_t> spv(size_t(size) / 4);
-    f.read(reinterpret_cast<char*>(spv.data()), size);
-    return spv;
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -214,22 +201,24 @@ int main() {
         // ── Load precomputed textures ─────────────────────────────────────────
         const std::string dataDir = BINARY_DIR;
 
-        auto loadTex2D = [&](const std::string &name, uint32_t w, uint32_t h) {
+        auto loadTex2D = [&](const std::string &name) {
             auto bytes = readFile(dataDir + name);
-            vku::TextureImage2D tex(dev, mp, w, h, 1, vk::Format::eR32G32B32A32Sfloat);
-            tex.upload(dev, bytes, cmdPool, mp, gfxQ);
+            vku::KTXFileLayout ktx(bytes.data(), bytes.data() + bytes.size());
+            vku::TextureImage2D tex(dev, mp, ktx.width(0), ktx.height(0), ktx.mipLevels(), ktx.format());
+            ktx.upload(dev, tex, bytes, cmdPool, mp, gfxQ);
             return tex;
         };
-        auto loadTex3D = [&](const std::string &name, uint32_t w, uint32_t h, uint32_t d) {
+        auto loadTex3D = [&](const std::string &name) {
             auto bytes = readFile(dataDir + name);
-            vku::TextureImage3D tex(dev, mp, w, h, d, 1, vk::Format::eR32G32B32A32Sfloat);
-            tex.upload(dev, bytes, cmdPool, mp, gfxQ);
+            vku::KTXFileLayout ktx(bytes.data(), bytes.data() + bytes.size());
+            vku::TextureImage3D tex(dev, mp, ktx.width(0), ktx.height(0), ktx.depth(0), ktx.mipLevels(), ktx.format());
+            ktx.upload(dev, tex, bytes, cmdPool, mp, gfxQ);
             return tex;
         };
 
-        auto txTrans = loadTex2D("transmittance.dat", TRANS_W, TRANS_H);
-        auto txScat  = loadTex3D("scattering.dat",    SCAT_W, SCAT_H, SCAT_D);
-        auto txIrr   = loadTex2D("irradiance.dat",    IRR_W,  IRR_H);
+        auto txTrans = loadTex2D("transmittance.ktx");
+        auto txScat  = loadTex3D("scattering.ktx");
+        auto txIrr   = loadTex2D("irradiance.ktx");
 
         // ── Sampler ───────────────────────────────────────────────────────────
         auto sampler = vku::SamplerMaker{}
@@ -242,11 +231,8 @@ int main() {
         vk::Sampler samp = *sampler;
 
         // ── Load SPIR-V shaders ───────────────────────────────────────────────
-        fprintf(stderr, "Loading shaders from %s\n", BINARY_DIR);
-        auto vertSpv = readSpv(BINARY_DIR "scene.vert.spv");
-        auto fragSpv = readSpv(BINARY_DIR "scene.frag.spv");
-        vku::ShaderModule vertMod(dev, vertSpv.begin(), vertSpv.end());
-        vku::ShaderModule fragMod(dev, fragSpv.begin(), fragSpv.end());
+        vku::ShaderModule vertMod(dev, BINARY_DIR "scene.vert.spv");
+        vku::ShaderModule fragMod(dev, BINARY_DIR "scene.frag.spv");
 
         // ── Descriptor layout ─────────────────────────────────────────────────
         auto dsl = vku::DescriptorSetLayoutMaker{}
@@ -423,7 +409,7 @@ int main() {
 
                 case SDL_MOUSEBUTTONDOWN:
                     dragging = true;
-                    dragSun  = !!(SDL_GetModState() & KMOD_CTRL);
+                    dragSun  = (SDL_GetModState() & KMOD_CTRL);
                     oldX = ev.button.x; oldY = ev.button.y;
                     break;
 

@@ -55,7 +55,7 @@ function(example_sdl2 order exname)
     ${exname}/${exname}.cpp
     ${shaders}
     ../include/vku/vku.hpp
-    ../include/vku/vku_framework_sdl2.hpp
+    ../include/vku/vku_framework.hpp
   )
 
   target_link_libraries(${order}-${exname}
@@ -108,6 +108,6 @@ example_sdl2(05 PrecomputedAtmosphericScattering2008
 )
 example_sdl2(06 PrecomputedAtmosphericScattering2017
   SHADERS scene.vert scene.frag
-  DATA transmittance.dat scattering.dat irradiance.dat
+  DATA transmittance.ktx scattering.ktx irradiance.ktx
   GLSLC_DEPENDS definitions.glsl functions.glsl
 )
